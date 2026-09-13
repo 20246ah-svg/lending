@@ -3,27 +3,29 @@ import { NextResponse } from "next/server";
 export async function POST(req: Request) {
   try {
     const { title, condition, details } = await req.json();
+    
+    // ВНИМАНИЕ: Проверяем наличие ключа
     const apiKey = process.env.OPENROUTER_API_KEY;
 
-    if (!apiKey) {
-      console.error("API Key is missing!");
-      return NextResponse.json({ error: "Ключ API не найден" }, { status: 500 });
+    if (!apiKey || apiKey === "") {
+      return NextResponse.json({ error: "API_KEY_IS_MISSING" }, { status: 401 });
     }
 
     const prompt = `Напиши продающее объявление для Авито. 
     Товар: ${title}, Состояние: ${condition}, Детали: ${details}. 
-    Используй структуру: Заголовок, Описание, Преимущества, Доставка. Добавь эмодзи.`;
+    Используй структуру: Заголовок с эмодзи, Описание, Преимущества, Доставка.
+    Текст должен быть на русском языке.`;
 
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${apiKey}`,
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://lending-pied.vercel.app/", // Обязательно для OpenRouter
-        "X-Title": "TurboSell AI", // Обязательно для OpenRouter
+        "HTTP-Referer": "https://lending-pied.vercel.app/",
+        "X-Title": "TurboSell AI",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.0-flash-exp:free", // Попробуем Gemini — она быстрее и стабильнее сейчас
+        model: "meta-llama/llama-3.2-3b-instruct:free", // Самая стабильная бесплатная модель
         messages: [{ role: "user", content: prompt }],
       }),
     });
@@ -31,15 +33,15 @@ export async function POST(req: Request) {
     const data = await response.json();
     
     if (!response.ok) {
-      console.error("OpenRouter API Error:", data);
-      return NextResponse.json({ error: data.error?.message || "Ошибка API" }, { status: response.status });
+      console.error("OpenRouter Error Details:", data);
+      return NextResponse.json({ error: data.error?.message || "AI_ERROR" }, { status: response.status });
     }
 
     const aiText = data.choices?.[0]?.message?.content || "Не удалось сгенерировать текст.";
     return NextResponse.json({ text: aiText });
 
   } catch (error) {
-    console.error("Server Error:", error);
-    return NextResponse.json({ error: "Ошибка сервера" }, { status: 500 });
+    console.error("Critical Server Error:", error);
+    return NextResponse.json({ error: "SERVER_ERROR" }, { status: 500 });
   }
 }
