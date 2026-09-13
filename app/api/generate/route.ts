@@ -3,47 +3,43 @@ import { NextResponse } from "next/server";
 export async function POST(req: Request) {
   try {
     const { title, condition, details } = await req.json();
+    const apiKey = process.env.OPENROUTER_API_KEY;
 
-    const prompt = `Ты — лучший авитолог и копирайтер в РФ. Напиши идеальное продающее объявление для Авито/Юлы.
+    if (!apiKey) {
+      console.error("API Key is missing!");
+      return NextResponse.json({ error: "Ключ API не найден" }, { status: 500 });
+    }
 
-Товар: ${title}
-Состояние: ${condition}
-Доп. детали и нюансы: ${details || "Нет"}
-
-Структура объявления:
-1. Заголовок с цепляющими эмодзи и выгодой.
-2. Вступающая фраза, привлекающая внимание.
-3. Блок "Характеристики и состояние" (в виде аккуратных пунктов).
-4. Блок "Почему стоит купить именно у меня" (гарантия, проверки, бережный уход).
-5. Условия покупки (самовывоз, Авито Доставка, бронь).
-6. Внизу блок SEO-тегов через хэштеги для поиска на Авито.
-
-Текст должен быть убедительным, без "воды", написан живым языком.`;
+    const prompt = `Напиши продающее объявление для Авито. 
+    Товар: ${title}, Состояние: ${condition}, Детали: ${details}. 
+    Используй структуру: Заголовок, Описание, Преимущества, Доставка. Добавь эмодзи.`;
 
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "Authorization": `Bearer ${apiKey}`,
         "Content-Type": "application/json",
+        "HTTP-Referer": "https://lending-pied.vercel.app/", // Обязательно для OpenRouter
+        "X-Title": "TurboSell AI", // Обязательно для OpenRouter
       },
       body: JSON.stringify({
-        model: "meta-llama/llama-3.3-70b-instruct:free", // Мощная бесплатная модель
+        model: "google/gemini-2.0-flash-exp:free", // Попробуем Gemini — она быстрее и стабильнее сейчас
         messages: [{ role: "user", content: prompt }],
-        temperature: 0.7,
       }),
     });
 
     const data = await response.json();
     
     if (!response.ok) {
-      console.error("OpenRouter Error:", data);
-      return NextResponse.json({ error: "Ошибка ИИ сервиса" }, { status: 500 });
+      console.error("OpenRouter API Error:", data);
+      return NextResponse.json({ error: data.error?.message || "Ошибка API" }, { status: response.status });
     }
 
     const aiText = data.choices?.[0]?.message?.content || "Не удалось сгенерировать текст.";
     return NextResponse.json({ text: aiText });
 
   } catch (error) {
+    console.error("Server Error:", error);
     return NextResponse.json({ error: "Ошибка сервера" }, { status: 500 });
   }
 }
