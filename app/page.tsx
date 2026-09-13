@@ -19,21 +19,27 @@ export default function Home() {
       return;
     }
     setLoading(true);
-    setTimeout(() => {
-      setGeneratedText(
-        `🔥 ${itemTitle} — В отличном состоянии!\n\n` +
-        `📦 Состояние: ${condition}\n` +
-        `📝 Описание:\n${details || "Полностью исправен, готов к любым проверкам."}\n\n` +
-        `✅ Преимущества:\n` +
-        `— Использовался бережно и аккуратно\n` +
-        `— Полный комплект / Чистый и ухоженный\n` +
-        `— Отличная цена по рынку\n\n` +
-        `📍 Самовывоз / Возможна отправка Авито Доставкой (СДЭК, Почта, Boxberry).\n` +
-        `💬 Пишите в сообщения или звоните — отвечаю быстро!`
-      );
-      setGenerationsLeft((prev) => prev - 1);
+
+    try {
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: itemTitle, condition, details }),
+      });
+
+      const data = await res.json();
+
+      if (data.text) {
+        setGeneratedText(data.text);
+        setGenerationsLeft((prev) => prev - 1);
+      } else {
+        alert(" Ошибка генерации. Попробуйте еще раз.");
+      }
+    } catch (err) {
+      alert(" Ошибка сети. Проверьте подключение.");
+    } finally {
       setLoading(false);
-    }, 1200);
+    }
   };
 
   const copyToClipboard = () => {
@@ -45,6 +51,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center p-4 md:p-8 font-sans selection:bg-indigo-500 selection:text-white relative overflow-hidden">
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-indigo-600/20 blur-[140px] rounded-full pointer-events-none" />
+      
       <header className="w-full max-w-4xl flex justify-between items-center py-4 border-b border-slate-800/80 mb-12 relative z-10">
         <div className="flex items-center gap-2 font-bold text-xl tracking-tight">
           <Zap className="text-indigo-400 fill-indigo-400" />
@@ -54,6 +61,7 @@ export default function Home() {
           Осталось попыток: <span className="text-indigo-400 font-bold">{generationsLeft}</span>
         </div>
       </header>
+
       <main className="w-full max-w-4xl flex flex-col items-center text-center z-10">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-sm mb-6">
           <Flame size={16} className="text-indigo-400" /> Генератор продающих текстов для Авито
@@ -64,6 +72,7 @@ export default function Home() {
         <p className="text-slate-400 text-lg md:text-xl max-w-2xl mb-10">
           Введи пару слов о товаре — получи идеальное SEO-объявление с высокой кликабельностью. Без копирайтеров и мучений.
         </p>
+
         <div className="w-full bg-slate-900/80 border border-slate-800 rounded-2xl p-6 md:p-8 backdrop-blur-xl shadow-2xl text-left mb-16">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="flex flex-col gap-4">
@@ -82,12 +91,13 @@ export default function Home() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-2">Детали и дефекты</label>
-                <textarea placeholder="АКБ 87%, коробка в комплекте..." value={details} onChange={(e) => setDetails(e.target.value)} rows={3} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition" />
+                <textarea placeholder="АКБ 87%, пара микроцарапин, комплект: коробка и кабель..." value={details} onChange={(e) => setDetails(e.target.value)} rows={3} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition" />
               </div>
               <button onClick={handleGenerate} disabled={loading || !itemTitle} className="w-full mt-2 bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white font-medium py-3.5 px-6 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/25 transition disabled:opacity-50 cursor-pointer">
-                {loading ? <span className="flex items-center gap-2"><Sparkles className="animate-spin" size={18} /> Создаем шедевр...</span> : <><Sparkles size={18} /> Сгенерировать объявление</>}
+                {loading ? <span className="flex items-center gap-2"><Sparkles className="animate-spin" size={18} /> Нейросеть пишет текст...</span> : <><Sparkles size={18} /> Сгенерировать объявление</>}
               </button>
             </div>
+            
             <div className="flex flex-col h-full">
               <div className="flex justify-between items-center mb-2">
                 <label className="text-sm font-medium text-slate-300">Готовое объявление</label>
@@ -97,12 +107,13 @@ export default function Home() {
                   </button>
                 )}
               </div>
-              <div className="flex-1 bg-slate-950 border border-slate-800 rounded-xl p-4 text-slate-300 font-mono text-sm overflow-y-auto min-h-[220px] whitespace-pre-line">
-                {generatedText || <span className="text-slate-600 font-sans italic">Здесь появится продающий текст со структурой, буллетами и эмодзи...</span>}
+              <div className="flex-1 bg-slate-950 border border-slate-800 rounded-xl p-4 text-slate-300 font-mono text-sm overflow-y-auto min-h-[260px] whitespace-pre-line">
+                {generatedText || <span className="text-slate-600 font-sans italic">Здесь появится глубоко проработанное объявление с SEO-тегами и структурой...</span>}
               </div>
             </div>
           </div>
         </div>
+
         <div className="w-full max-w-3xl mb-16">
           <h2 className="text-2xl md:text-3xl font-bold mb-4">Тарифы для тех, кто продает часто</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
