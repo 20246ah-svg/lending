@@ -157,7 +157,12 @@ export async function POST(req: Request) {
       }
 
       // 3. Inspect package.json if present
-      let packageJsonData: any = null;
+      type PackageJson = {
+        dependencies?: Record<string, string>;
+        devDependencies?: Record<string, string>;
+        scripts?: Record<string, string>;
+      };
+      let packageJsonData: PackageJson | null = null;
       let hasTests = false;
       let depsCount = 0;
       let hasTypeScript = false;
@@ -178,7 +183,7 @@ export async function POST(req: Request) {
             const pkgBody = await pkgRes.json();
             if (pkgBody.content) {
               const decoded = Buffer.from(pkgBody.content, "base64").toString("utf-8");
-              packageJsonData = JSON.parse(decoded);
+              packageJsonData = JSON.parse(decoded) as PackageJson;
               const allDeps = {
                 ...(packageJsonData.dependencies || {}),
                 ...(packageJsonData.devDependencies || {}),
@@ -431,10 +436,14 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ error: "Не переданы параметры для анализа" }, { status: 400 });
-  } catch (err: any) {
+  } catch (err) {
     console.error("Audit API Error:", err);
     return NextResponse.json(
-      { error: `Внутренняя ошибка сервера при аудите: ${err?.message || "Неизвестная ошибка"}` },
+      {
+        error: `Внутренняя ошибка сервера при аудите: ${
+          err instanceof Error ? err.message : "Неизвестная ошибка"
+        }`,
+      },
       { status: 500 }
     );
   }
