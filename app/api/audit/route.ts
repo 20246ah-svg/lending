@@ -15,6 +15,7 @@ interface Antipattern {
   detectedIn: string;
   sampleBadCode: string;
   sampleFix: string;
+  cwe?: string;
 }
 
 interface RefactorStep {
@@ -298,13 +299,14 @@ export async function POST(req: Request) {
 
       const estimatedFixCost = Math.round((doomsdayScore * 65) / 100) * 100;
 
-      // Real antipatterns
+      // Real antipatterns with CWE tags
       const antipatterns: Antipattern[] = [];
 
       if (secretMatches > 0 && sampledFilePath) {
         antipatterns.push({
-          title: "Подозрение на утечку API ключей / Секретов",
-          description: `В файле ${sampledFilePath} найдены паттерны секретных переменных окружения. Если компонент клиентский ('use client'), ключ доступен любому пользователю.`,
+          title: "Утечка API ключей / Секретов в открытый бандл",
+          cwe: "CWE-798",
+          description: `В файле ${sampledFilePath} найдены сервисные переменные (SERVICE_ROLE_KEY / API_KEY). ИИ оптимизирован под рабочий вид, а не под безопасность. Если компонент клиентский ('use client'), ключ доступен любому пользователю через DevTools.`,
           severity: "CRITICAL",
           detectedIn: `${sampledFilePath}`,
           sampleBadCode: `// Найдено упоминание секретных ключей:\nprocess.env.SERVICE_ROLE_KEY || API_KEY`,
@@ -315,7 +317,8 @@ export async function POST(req: Request) {
       if (anyMatches > 0 && sampledFilePath) {
         antipatterns.push({
           title: `Глушение ошибок компилятора через 'as any' (${anyMatches} шт.)`,
-          description: `ИИ часто прибегает к 'as any', когда не может вывести сложный тип. Это скрывает реальные рантайм-краши.`,
+          cwe: "CWE-704",
+          description: `ИИ часто прибегает к 'as any', когда не может вывести сложный тип. Это создает ложную иллюзию безопасности и скрывает реальные рантайм-краши.`,
           severity: "HIGH",
           detectedIn: `${sampledFilePath}`,
           sampleBadCode: `// Код из вашего репозитория:\nconst response = (await res.json()) as any;`,
@@ -325,9 +328,10 @@ export async function POST(req: Request) {
 
       if (!hasTests) {
         antipatterns.push({
-          title: "Zero-Test Blindspot: 0 автотестов в проекте",
+          title: "Разрыв в тестировании: 0 автотестов (Testing Gap)",
+          cwe: "CWE-1065",
           description:
-            "В репозитории не обнаружено ни Jest, ни Vitest, ни Playwright. При рефакторинге через нейросеть вы не узнаете о сломанных функциях, пока о них не напишут клиенты.",
+            "В репозитории не обнаружено ни Jest, ни Vitest, ни Playwright. ИИ отлично генерирует разметку, но практически не пишет тесты. Любой последующий рефакторинг несет риск тихой поломки логики.",
           severity: doomsdayScore > 70 ? "CRITICAL" : "HIGH",
           detectedIn: "package.json / root",
           sampleBadCode: `// package.json scripts:\n"scripts": {\n  "dev": "next dev",\n  "build": "next build"\n  // Тесты отсутствуют!\n}`,
@@ -335,12 +339,28 @@ export async function POST(req: Request) {
         });
       }
 
+      if (packageJsonData) {
+        const hasLockRisk = !treeItems.some((f: any) => f.path.includes("package-lock.json") || f.path.includes("pnpm-lock.yaml") || f.path.includes("yarn.lock"));
+        if (hasLockRisk) {
+          antipatterns.push({
+            title: "Supply Chain Risk: Отсутствие lock-файла зависимостей",
+            cwe: "CWE-1357",
+            description: "Исследования показывают: до 19.7% рекомендаций библиотек от ИИ указывают на несуществующие пакеты. Без зафиксированного lock-файла проект уязвим для атак подмены пакетов.",
+            severity: "HIGH",
+            detectedIn: "package.json / root",
+            sampleBadCode: `// package-lock.json или pnpm-lock.yaml отсутствует в репозитории`,
+            sampleFix: `// Зафиксируйте точные версии пакетов через npm install / pnpm install`,
+          });
+        }
+      }
+
       if (trulyLargeFiles.length > 0 && (trulyLargeFiles[0].size || 0) > 20000) {
         antipatterns.push({
-          title: `Монолитный файл: ${trulyLargeFiles[0].path}`,
+          title: `Volume-Quality Inverse Law: Монолит ${trulyLargeFiles[0].path}`,
+          cwe: "CWE-398",
           description: `Размер файла превышает 20 Кб (~${Math.round(
             (trulyLargeFiles[0].size || 0) / 38
-          )} строк). Нейросеть начинает забывать начало файла при дописывании фич в конец.`,
+          )} строк). По закону обратной пропорциональности объема и качества, высокая связанность ведет к потере контекста ИИ: добавление новых фич начинает стирать существующий код.`,
           severity: "CRITICAL",
           detectedIn: trulyLargeFiles[0].path,
           sampleBadCode: `// ${trulyLargeFiles[0].path} содержит слишком много несвязанных обязанностей`,
@@ -366,36 +386,37 @@ export async function POST(req: Request) {
           targetTool: "Cursor Composer / Claude 3.7",
           prompt: isTrulyGodFile
             ? `Ты — Senior Refactoring Agent в Cursor / Claude 3.7.
-Твоя цель: безопасно разбить God-компонент '${mainFile}' (~${mainFileLines} строк кода) на модульные подкомпоненты внутри папки '${targetSubfolder}', сохранив все стейты, хуки, пропсы и стили без малейших визуальных или логических изменений.
+Твоя цель: применить закон Single Responsibility Principle и устранить структурную деградацию (Volume-Quality Inverse Law) в God-компоненте '${mainFile}' (~${mainFileLines} строк кода).
+Безопасно разбей его на слабосвязанные модули внутри папки '${targetSubfolder}', сохранив все стейты, хуки, пропсы и стили без малейших визуальных или логических изменений.
 
 Строгие правила безопасного рефакторинга:
 1. НЕ сокращай код через комментарии вроде '// rest of code stays here'. Выведи полный, готовый к запуску код.
 2. Сохрани '${mainFile}' как чистый оркестратор не длиннее 120 строк.
-3. Вынеси UI-секции в отдельные файлы внутри '${targetSubfolder}/':
+3. Раздели систему на 3 слабосвязанных модуля с изолированными интерфейсами:
    - '${targetSubfolder}/Header.tsx'
    - '${targetSubfolder}/MainView.tsx'
    - '${targetSubfolder}/Modals.tsx'
-4. Все стейты и методы передай через пропсы или создай кастомный хук '${targetSubfolder}/use${cleanBaseName.charAt(0).toUpperCase() + cleanBaseName.slice(1)}State.ts'.
+4. Для каждого сервиса определи четкую зону ответственности и типизированный интерфейс.
 5. Напиши строгие TypeScript interfaces без использования 'any'.`
             : `Ты — Senior Software Architect в Cursor / Claude 3.7.
 В репозитории ${owner}/${repo} модуль '${mainFile}' (~${mainFileLines} строк) выполняет ключевую роль.
-Задача: структурируй его архитектуру, выдели чистые вспомогательные функции и стейт в '${targetSubfolder}', сохранив строгую типизацию TypeScript без единого 'any'. Верни полный обновленный код.`,
+Задача: структурируй его архитектуру, выдели чистые вспомогательные функции и стейт в '${targetSubfolder}', сохранив строгую типизацию TypeScript без единого 'any'. Проверь, что все используемые библиотеки существуют в официальном npm-реестре и актуальны. Верни полный обновленный код.`,
         },
         {
           step: 2,
-          title: secretMatches > 0 ? "Изоляция секретных ключей в Server Actions" : "Очистка от 'as any' и валидация Zod",
+          title: secretMatches > 0 ? "Изоляция секретных ключей (CWE-798) в Server Actions" : "Очистка от 'as any' и валидация Zod",
           estimatedTime: "10 минут",
           targetTool: "Cursor Cmd+K",
           prompt: secretMatches > 0
             ? `Ты — Senior Security Engineer в Cursor.
-В файле '${sampledFilePath || mainFile}' обнаружено небезопасное использование секретных переменных (API keys / service role).
+В файле '${sampledFilePath || mainFile}' обнаружено небезопасное использование приватных ключей (уязвимость CWE-798: Hard-coded Credentials).
 Задача: перенеси приватные операции с базой и ключами из клиентского бандла в безопасный Server Action в 'app/actions/service.ts'.
 Требования:
 1. Пометь файл 'app/actions/service.ts' директивой 'use server'.
 2. Клиентский компонент '${sampledFilePath || mainFile}' должен вызывать Server Action асинхронно без прямого импорта master-ключа.
-3. Верни готовый код Server Action и точечный diff вызова из формы.`
+3. Исключи раскрытие чувствительных данных через DevTools. Верни готовый код Server Action и точечный diff вызова из формы.`
             : `Ты — TypeScript Strictness Architect в Cursor.
-В файле '${sampledFilePath || mainFile}' устрани все приведения типов 'as any'.
+В файле '${sampledFilePath || mainFile}' устрани все приведения типов 'as any' (CWE-704).
 Задача:
 1. Создай строгие Zod-схемы для всех внешних API ответов и стейтов.
 2. Оберни парсинг данных в schema.safeParse() с graceful fallback на случай невалидных данных.
@@ -407,11 +428,13 @@ export async function POST(req: Request) {
           estimatedTime: "15 минут",
           targetTool: "Claude 3.7 Thinking",
           prompt: `Ты — Senior QA Automation Lead.
-Для отрефакторенного модуля '${mainFile}' репозитория '${owner}/${repo}' напиши 3 критических автоматических теста с использованием Vitest и @testing-library/react:
-1. Тест рендера основного состояния и корректности отображения данных.
-2. Тест обработки сетевой ошибки (Network Error) и отображения fallback UI.
-3. Тест пользовательского действия (клик по кнопке действия с проверкой вызова обработчика).
-Помести тесты в файл '${mainFile.replace(/\.[^/.]+$/, "")}.test.tsx'.`,
+Для отрефакторенного модуля '${mainFile}' репозитория '${owner}/${repo}' напиши автоматические unit-тесты с использованием Vitest и @testing-library/react.
+Обязательно закрой разрыв в тестировании (Testing Gap) и покрой 4 ключевых сценария:
+1. Корректный ввод: успешный рендер основного состояния и передача валидных данных.
+2. Пустой ввод: отображение graceful empty-state при отсутствии записей.
+3. Ввод с неверным типом данных: защита от неожиданных падений в рантайме.
+4. Граничные значения: краевые фильтры, длинные строки и лимиты пагинации.
+Помести тесты в файл '${mainFile.replace(/\.[^/.]+$/, "")}.test.tsx'. Убедись, что тесты падают при нарушении логики.`,
         },
       ];
 
@@ -460,16 +483,19 @@ function analyzeSnippet(code: string): AuditReport {
   const secretMatches = (code.match(/(SECRET|SERVICE_ROLE|API_KEY|BEARER|TOKEN)/gi) || []).length;
   const hasClient = code.includes('"use client"') || code.includes("'use client'");
   const hasObjectDepLoop = /useEffect\s*\([^,]+,\s*\[[^\]]*(filters|options|params|config|query|data|state|{\s*})/i.test(code);
+  const emptyCatchMatches = (code.match(/catch\s*(\([^)]*\))?\s*\{\s*\}/g) || []).length;
+  const hasUnhandledFetch = /fetch\s*\([^,)]+\)/g.test(code) && !code.includes("signal") && !code.includes("AbortController");
 
   const isMonolith = lineCount >= 250;
 
   // Accurate, calibrated Doomsday score
   let score = 10;
-  if (hasClient && secretMatches > 0) score += 42; // Critical credential leak
+  if (hasClient && secretMatches > 0) score += 42; // Critical credential leak (CWE-798)
   else if (secretMatches > 0) score += 18;
 
   if (anyMatches > 0) score += Math.min(22, anyMatches * 7);
   if (hasObjectDepLoop) score += 18;
+  if (emptyCatchMatches > 0 || hasUnhandledFetch) score += 14; // Happy Path blindspot
   if (useEffectMatches > 2 && useStateMatches > 3) score += 12;
 
   if (lineCount > 250) score += 15;
@@ -483,18 +509,20 @@ function analyzeSnippet(code: string): AuditReport {
   if (hasClient && secretMatches > 0) {
     antipatterns.push({
       title: "Секретные ключи в клиентском бандле ('use client')",
-      description: "Обнаружены приватные идентификаторы (SERVICE_ROLE_KEY / API_KEY) внутри клиентского компонента. Этот ключ попадает в сборку браузера и доступен в DevTools любому пользователю.",
+      cwe: "CWE-798",
+      description: "ИИ оптимизирован под «правильный вид», а не под безопасность. Обнаружены приватные идентификаторы (SERVICE_ROLE_KEY / API_KEY) внутри клиентского компонента. Этот ключ попадает в сборку браузера и доступен в DevTools любому пользователю.",
       severity: "CRITICAL",
       detectedIn: "snippet:client-bundle",
       sampleBadCode: `"use client";\nconst supabase = createClient(..., process.env.SUPABASE_SERVICE_ROLE_KEY!);`,
-      sampleFix: `// Вынесите приватные операции в app/actions/service.ts с 'use server':\n'use server';\nexport async function getSecureData() { ... }`,
+      sampleFix: `// Вынесите приватную логику в app/actions/service.ts с 'use server':\n'use server';\nexport async function getSecureData() { ... }`,
     });
   }
 
   if (hasObjectDepLoop) {
     antipatterns.push({
       title: "Бесконечный цикл ререндера в useEffect",
-      description: "Объект в массиве зависимостей useEffect пересоздается при каждом рендере, вызывая лавину сетевых запросов и фриз браузера.",
+      cwe: "CWE-400",
+      description: "Объект в массиве зависимостей useEffect пересоздается при каждом рендере, вызывая лавину сетевых запросов и исчерпание квот базы данных.",
       severity: "HIGH",
       detectedIn: "snippet:lifecycle",
       sampleBadCode: `const [filters, setFilters] = useState({ page: 1 });\nuseEffect(() => { ... }, [filters]); // Ссылка пересоздается!`,
@@ -502,9 +530,22 @@ function analyzeSnippet(code: string): AuditReport {
     });
   }
 
+  if (emptyCatchMatches > 0 || hasUnhandledFetch) {
+    antipatterns.push({
+      title: "Happy Path Blindspot: Пустые catch и отсутствие таймаутов",
+      cwe: "CWE-390 / CWE-703",
+      description: "ИИ сгенерировал код под идеальный сценарий без обработки сбоев: сетевые вызовы не имеют таймаутов (5 сек), а блок catch молча проглатывает ошибки. При сбое сети UI зависает намертво.",
+      severity: "HIGH",
+      detectedIn: "snippet:error-handling",
+      sampleBadCode: `try {\n  const res = await fetch("/api/data");\n} catch (e) {\n  /* Пусто: ошибка заглушена */\n}`,
+      sampleFix: `// Result<T, E> паттерн и AbortController:\nconst controller = new AbortController();\nconst timeout = setTimeout(() => controller.abort(), 5000);`,
+    });
+  }
+
   if (anyMatches > 0) {
     antipatterns.push({
       title: `Обнаружены типы 'any' (${anyMatches} шт.)`,
+      cwe: "CWE-704",
       description: "Отключение строгой проверки типов TypeScript. Любое изменение структуры ответа сервера приведет к необработанному крашу у клиента.",
       severity: "HIGH",
       detectedIn: "snippet:types",
@@ -515,8 +556,9 @@ function analyzeSnippet(code: string): AuditReport {
 
   if (isMonolith) {
     antipatterns.push({
-      title: `Файл превышает рекомендуемый лимит (${lineCount} строк)`,
-      description: "Для эффективной работы ИИ-ассистентов размер компонента не должен превышать 200-250 строк. В огромных файлах Cursor начинает затирать соседний код.",
+      title: `Volume-Quality Inverse Law: Монолит (${lineCount} строк)`,
+      cwe: "CWE-398",
+      description: "Для эффективной работы ИИ-ассистентов размер компонента не должен превышать 200-250 строк. Чем больше размер, тем выше связанность: Cursor начинает стирать соседний код при добавлении фич.",
       severity: lineCount > 600 ? "CRITICAL" : "HIGH",
       detectedIn: "snippet:monolith",
       sampleBadCode: `// Один файл объединяет ${useStateMatches} стейтов и ${lineCount} строк разметки`,
@@ -552,11 +594,11 @@ function analyzeSnippet(code: string): AuditReport {
   if (hasClient && secretMatches > 0) {
     refactorSteps.push({
       step: stepNum++,
-      title: "Хирургическая изоляция API ключей в Server Actions",
+      title: "Хирургическая изоляция API ключей (CWE-798) в Server Actions",
       estimatedTime: "5-10 минут",
       targetTool: "Cursor Cmd+K / Claude 3.7",
       prompt: `Ты — Senior Security Engineer в Cursor.
-В клиентском компоненте обнаружена критическая утечка приватных ключей базы данных (SUPABASE_SERVICE_ROLE_KEY).
+В коде ниже обнаружена критическая уязвимость CWE-798 (Hard-coded Credentials): утечка приватных ключей базы данных (SUPABASE_SERVICE_ROLE_KEY) в клиентском коде.
 Задача: перенеси приватные операции с базой и ключами из клиентского бандла в безопасный Server Action в 'app/actions/dashboard.ts'.
 
 Код для исправления:
@@ -568,6 +610,30 @@ ${codeSnippetForPrompt}
 1. Пометь файл 'app/actions/dashboard.ts' директивой 'use server'.
 2. Клиентский компонент должен запрашивать данные асинхронно через этот Server Action без прямого импорта мастер-ключа.
 3. Верни готовый код Server Action и точечный diff клиентского вызова.`,
+    });
+  }
+
+  if (emptyCatchMatches > 0 || hasUnhandledFetch) {
+    refactorSteps.push({
+      step: stepNum++,
+      title: "Внедрение Result-паттерна и таймаутов сетевых запросов (5 сек)",
+      estimatedTime: "10 минут",
+      targetTool: "Cursor Composer",
+      prompt: `Ты — Senior Resilience Architect в Cursor.
+В коде ниже обнаружен дефект «Happy Path Blindspot» (CWE-390): пустые блоки catch и сетевые запросы без ограничения времени выполнения.
+
+\`\`\`tsx
+${codeSnippetForPrompt}
+\`\`\`
+
+Задача:
+1. Добавь обработку сетевых ошибок для 3 сценариев:
+   - Таймаут сетевого запроса (5 секунд через AbortController).
+   - Пустой ответ или некорректный статус от API.
+   - Некорректный формат входных данных.
+2. Используй паттерн Result: type Result<T, E = string> = { ok: true; data: T } | { ok: false; error: E }.
+3. Добавь graceful fallback UI, чтобы компонент не зависал при сбое сети.
+Верни оптимизированный код компонента целиком.`,
     });
   }
 
@@ -619,33 +685,36 @@ ${codeSnippetForPrompt}
       estimatedTime: "20 минут",
       targetTool: "Cursor Composer (Cmd+I)",
       prompt: `Ты — Senior Refactoring Agent в Cursor / Claude 3.7.
-Перед тобой God-компонент на ${lineCount} строк.
+Перед тобой God-компонент на ${lineCount} строк, подверженный структурной деградации (Volume-Quality Inverse Law).
 Твоя цель: разбить этот компонент на модульные подкомпоненты внутри папки '/components', сохранив все стейты (${useStateMatches} шт.), обработчики событий и пропсы без малейших визуальных или логических изменений.
 
 Строгие правила:
 1. НЕ сокращай код и не пиши комментарии вроде '// rest of code stays here'.
 2. Сохрани корневой файл как чистый оркестратор не длиннее 100 строк.
-3. Вынеси тяжелые части разметки в '/components/ViewSection.tsx' и кастомный хук 'useComponentState.ts'.
-4. Напиши строгие TypeScript interfaces без 'any'.`,
+3. Вынеси модули в '/components/ViewSection.tsx' и кастомный хук 'useComponentState.ts'.
+4. Проверь, что все используемые библиотеки существуют в официальном npm-реестре.
+5. Напиши строгие TypeScript interfaces без 'any'.`,
     });
   }
 
   if (refactorSteps.length < 2) {
     refactorSteps.push({
       step: stepNum++,
-      title: "Создание модульных тестов с Vitest",
+      title: "Создание модульных тестов с Vitest (4 граничных сценария)",
       estimatedTime: "15 минут",
       targetTool: "Claude 3.7 Thinking",
       prompt: `Ты — Senior QA Automation Lead.
-Для следующего компонента напиши 3 автоматических модульных теста с использованием Vitest и @testing-library/react:
+Для следующего компонента напиши набор модульных тестов с использованием Vitest и @testing-library/react.
+Обязательно закрой разрыв в тестировании (Testing Gap) и покрой 4 ключевых сценария:
+1. Корректный ввод: успешный рендер основного состояния.
+2. Пустой ввод: отображение fallback UI при отсутствии данных.
+3. Ввод с неверным типом данных: защита от необработанных рантайм-крашей.
+4. Граничные значения: проверка лимитов, краевых значений и крайних состояний.
+Убедись, что тесты падают при нарушении логики.
 
 \`\`\`tsx
 ${codeSnippetForPrompt}
-\`\`\`
-
-1. Тест рендера начального состояния.
-2. Тест обработки сетевой ошибки и состояния загрузки.
-3. Тест пользовательского взаимодействия.`,
+\`\`\``,
     });
   }
 

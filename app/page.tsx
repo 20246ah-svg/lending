@@ -38,6 +38,7 @@ interface Antipattern {
   detectedIn: string;
   sampleBadCode: string;
   sampleFix: string;
+  cwe?: string;
 }
 
 interface RefactorStep {
@@ -109,6 +110,7 @@ const DEFAULT_REPORT: AuditReport = {
   antipatterns: [
     {
       title: "Секретный Service Key в клиентском коде ('use client')",
+      cwe: "CWE-798",
       description:
         "ИИ пытался обойти ошибку Row Level Security и импортировал SUPABASE_SERVICE_ROLE_KEY прямо в клиентский компонент. Любой пользователь видит мастер-ключ в браузере.",
       severity: "CRITICAL",
@@ -132,6 +134,7 @@ export async function updateUserRole(userId: string, role: string) {
     },
     {
       title: "Бесконечная петля ререндеров в useEffect",
+      cwe: "CWE-400",
       description:
         "Курсор поместил новый объект filters в зависимости хука без useCallback/useMemo. При каждом рендере ссылка обновляется, порождая 20+ запросов к БД в секунду.",
       severity: "CRITICAL",
@@ -150,6 +153,7 @@ useEffect(() => {
     },
     {
       title: "Подавление типов через каскад 'as any'",
+      cwe: "CWE-704",
       description:
         "Когда линтер ругался на несовпадение схемы, нейросеть заглушила типы 28 раз. Компилятор молчит, но код падает у реальных пользователей.",
       severity: "HIGH",
@@ -163,6 +167,30 @@ const AIResponseSchema = z.object({
   choices: z.array(z.object({ message: z.object({ content: z.string() }) }))
 });
 const payload = AIResponseSchema.parse(await response.json());`,
+    },
+    {
+      title: "Happy Path Blindspot: Пустые catch и отсутствие таймаутов",
+      cwe: "CWE-390",
+      description:
+        "ИИ сгенерировал код под идеальный сценарий без обработки сбоев: сетевые запросы лишены таймаутов (5 сек), а блок catch молча проглатывает ошибки. При задержке сети интерфейс зависает намертво.",
+      severity: "HIGH",
+      detectedIn: "lib/ai-handler.ts:114",
+      sampleBadCode: `try {
+  const res = await fetch("/api/generate");
+} catch (e) {
+  // ❌ ИИ проглотил исключение, пользователь видит вечный спиннер
+}`,
+      sampleFix: `// ✅ Result<T, E> паттерн и AbortController:
+const controller = new AbortController();
+const timer = setTimeout(() => controller.abort(), 5000);
+try {
+  const res = await fetch("/api/generate", { signal: controller.signal });
+  return { ok: true, data: await res.json() };
+} catch (err) {
+  return { ok: false, error: "Network timeout or connection refused" };
+} finally {
+  clearTimeout(timer);
+}`,
     },
   ],
   refactorSteps: [
@@ -1079,6 +1107,11 @@ export default function Home() {
                             >
                               {item.severity}
                             </span>
+                            {item.cwe && (
+                              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-750 text-zinc-300 font-medium">
+                                {item.cwe}
+                              </span>
+                            )}
                             <span className="font-semibold text-sm text-zinc-100">{item.title}</span>
                           </div>
                           <span className="text-[11px] font-mono text-zinc-500">{item.detectedIn}</span>
@@ -1622,73 +1655,159 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ANATOMY OF AI SLOP */}
+      {/* ANATOMY OF AI DEFECTS & 5 PILLARS */}
       <section id="antipatterns" className="py-20 px-4 sm:px-8 max-w-5xl mx-auto z-10 relative">
         <div className="text-center max-w-2xl mx-auto mb-12">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-zinc-800 bg-zinc-900 text-zinc-300 text-xs font-mono mb-4">
+            <span>🔬 Научные исследования &amp; SAST-анализ</span>
+          </div>
           <h2 className="text-2xl sm:text-3xl font-bold text-white mb-2 tracking-tight">
-            {lang === "ru" ? "Анатомия типичных ошибок нейросетей" : "The 4 Horsemen of AI Code Rot"}
+            {lang === "ru" ? "Анатомия проблемы: почему ИИ-код терпит крах?" : "The Anatomy of AI Code Failures"}
           </h2>
-          <p className="text-zinc-400 text-xs sm:text-sm font-sans">
+          <p className="text-zinc-400 text-xs sm:text-sm font-sans leading-relaxed">
             {lang === "ru"
-              ? "Почему ИИ-генераторы сначала кажутся магией, а затем заводят проект в тупик."
-              : "Why vibe-coding feels like magic in week 1, and turns into an unmaintainable nightmare in week 4."}
+              ? "Проблема не в том, что ИИ «плохо пишет код». Проблема в том, что он пишет код, который выглядит идеальным, но содержит системный машинный след дефектов. До 45% генераций содержат уязвимости, а до 19.7% рекомендаций библиотек указывают на несуществующие пакеты."
+              : "AI is optimized for probability and appearance, not resilience. Up to 45% of AI code has security flaws, and 19.7% of suggested packages are hallucinated."}
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* 5 ROOT CAUSES GRID */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-16">
           <div className="p-5 rounded-xl border border-zinc-800 bg-zinc-900/40">
-            <h3 className="font-semibold text-sm text-white mb-1">
-              {lang === "ru" ? "1. Монолитный файл-монстр" : "1. The 3,000-Line God Component"}
+            <div className="flex items-center gap-2 mb-2">
+              <span className="w-5 h-5 rounded bg-zinc-800 text-zinc-300 text-xs font-mono flex items-center justify-center font-bold">1</span>
+              <span className="text-xs font-mono text-rose-400 font-semibold">CWE Security Risk</span>
+            </div>
+            <h3 className="font-semibold text-sm text-white mb-1.5">
+              {lang === "ru" ? "Оптимизация под «вид», а не безопасность" : "Optimized for Look, Not Security"}
             </h3>
             <p className="text-xs text-zinc-400 font-sans leading-relaxed mb-3">
               {lang === "ru"
-                ? "Когда вы просите Cursor добавить модалку или платежи, ему проще дописать 150 строк в текущий файл page.tsx, чем разносить компоненты по папкам. Вскоре файл превышает контекстное окно модели, и ИИ начинает стирать старый код."
-                : "When you ask Cursor to add a modal, it's easier for the LLM to dump 150 lines into `page.tsx` than create clean modular components. Soon the file exceeds context window limits and truncates older logic."}
+                ? "Модель генерирует статистически вероятный код. Безопасность не входит в ее целевую функцию. В итоге код компилируется, но открывает SQL-инъекции, XSS и выставляет приватные токены в браузер."
+                : "LLMs output high-probability tokens satisfying prompts without inherent security guarantees, leaving SQLi and exposed tokens."}
             </p>
             <div className="text-[11px] font-mono text-zinc-500 border-t border-zinc-800/80 pt-2">
-              {lang === "ru" ? "Симптом: «Попросил сменить цвет кнопки — перестала работать оплата»" : "Symptom: Changed button color, broke checkout."}
+              {lang === "ru" ? "Вайб-решение: SAST-правила и мета-промпты с фиксацией CWE." : "VibeDebt Fix: SAST CWE remediation prompts."}
             </div>
           </div>
 
           <div className="p-5 rounded-xl border border-zinc-800 bg-zinc-900/40">
-            <h3 className="font-semibold text-sm text-white mb-1">
-              {lang === "ru" ? "2. Глушение TypeScript через 'as any'" : "2. Silent Crash Masking via 'as any'"}
+            <div className="flex items-center gap-2 mb-2">
+              <span className="w-5 h-5 rounded bg-zinc-800 text-zinc-300 text-xs font-mono flex items-center justify-center font-bold">2</span>
+              <span className="text-xs font-mono text-amber-400 font-semibold">Supply Chain Slop</span>
+            </div>
+            <h3 className="font-semibold text-sm text-white mb-1.5">
+              {lang === "ru" ? "Галлюцинации пакетов и API (19.7%)" : "Package & API Hallucinations (19.7%)"}
             </h3>
             <p className="text-xs text-zinc-400 font-sans leading-relaxed mb-3">
               {lang === "ru"
-                ? "Сталкиваясь со сложными типами в Next.js или ORM, ИИ просто оборачивает данные в (data as any). Код собирается без предупреждений, но у реального пользователя падает с ошибкой Cannot read properties of undefined."
-                : "When faced with complex types in Next.js or ORMs, AI silences the compiler with `(data as any)`. It compiles cleanly, but blows up in production on undefined props."}
+                ? "Исследования показали: 19.7% рекомендаций библиотек от ИИ указывают на несуществующие пакеты. Злоумышленники массово регистрируют эти имена в npm для атак на цепочки поставок."
+                : "Studies prove 19.7% of AI package recommendations don't exist. Attackers register phantom packages on npm to breach startups."}
             </p>
             <div className="text-[11px] font-mono text-zinc-500 border-t border-zinc-800/80 pt-2">
-              {lang === "ru" ? "Симптом: Ложная иллюзия типобезопасности." : "Symptom: 0 build errors, 50 runtime crashes."}
+              {lang === "ru" ? "Вайб-решение: Валидация зависимостей и запрет фантомных библиотек." : "VibeDebt Fix: Lock-file audit & phantom package scan."}
             </div>
           </div>
 
           <div className="p-5 rounded-xl border border-zinc-800 bg-zinc-900/40">
-            <h3 className="font-semibold text-sm text-white mb-1">
-              {lang === "ru" ? "3. Циклические зависимости в useEffect" : "3. Infinite useEffect Render Loops"}
+            <div className="flex items-center gap-2 mb-2">
+              <span className="w-5 h-5 rounded bg-zinc-800 text-zinc-300 text-xs font-mono flex items-center justify-center font-bold">3</span>
+              <span className="text-xs font-mono text-purple-400 font-semibold">Inverse Law</span>
+            </div>
+            <h3 className="font-semibold text-sm text-white mb-1.5">
+              {lang === "ru" ? "Закон обратной связи объема и качества" : "Volume-Quality Inverse Law"}
             </h3>
             <p className="text-xs text-zinc-400 font-sans leading-relaxed mb-3">
               {lang === "ru"
-                ? "ИИ часто путается в ссылочной целостности объектов JavaScript, передавая нестабильные ссылки в массив зависимостей. Это вызывает сотни повторных запросов в секунду и исчерпание лимитов базы данных."
-                : "LLMs frequently misunderstand referential equality in JS, passing unstable object references into useEffect dependencies, causing 200 database queries per second."}
+                ? "Чем больше объем файла, тем сильнее структурная деградация. Начиная с 300 строк, Cursor теряет контекст и порождает сильно связанный 'vibe slop', затирая соседний функционал."
+                : "As file size grows, structural debt escalates exponentially. Over 300 lines, AI deletes existing features when adding new ones."}
             </p>
             <div className="text-[11px] font-mono text-zinc-500 border-t border-zinc-800/80 pt-2">
-              {lang === "ru" ? "Симптом: Вентиляторы ноутбука воют, а квота Supabase сгорела за час." : "Symptom: Laptop fans scream, $400 Supabase bill arrives."}
+              {lang === "ru" ? "Вайб-решение: Распил на 3 слабосвязанных сервиса." : "VibeDebt Fix: 3-service decoupling prompts."}
             </div>
           </div>
 
           <div className="p-5 rounded-xl border border-zinc-800 bg-zinc-900/40">
-            <h3 className="font-semibold text-sm text-white mb-1">
-              {lang === "ru" ? "4. Утечки секретов в клиентском бандле" : "4. Secrets Leaked in 'use client'"}
+            <div className="flex items-center gap-2 mb-2">
+              <span className="w-5 h-5 rounded bg-zinc-800 text-zinc-300 text-xs font-mono flex items-center justify-center font-bold">4</span>
+              <span className="text-xs font-mono text-blue-400 font-semibold">Happy Path Blindspot</span>
+            </div>
+            <h3 className="font-semibold text-sm text-white mb-1.5">
+              {lang === "ru" ? "Отсутствие обработки сбоев и крайних случаев" : "Happy Path & Null Blindspot"}
             </h3>
             <p className="text-xs text-zinc-400 font-sans leading-relaxed mb-3">
               {lang === "ru"
-                ? "Чтобы быстрее «заставить работать» функционал, нейросеть часто прописывает сервисные ключи в клиентских компонентах (NEXT_PUBLIC_SERVICE_KEY). Любой посетитель сайта может скопировать ключ через DevTools."
-                : "To make authentication work quickly, AI puts admin service role keys right into client components. Anyone can view your master database credentials in DevTools."}
+                ? "ИИ пишет код под «идеальный мир»: пустые блоки catch, сетевые запросы без таймаутов и отсутствие проверок на null. Малейший сбой сети подвешивает браузер пользователя намертво."
+                : "LLMs ignore timeouts, null checks, and error boundaries, leaving empty catch blocks that freeze production."}
             </p>
             <div className="text-[11px] font-mono text-zinc-500 border-t border-zinc-800/80 pt-2">
-              {lang === "ru" ? "Симптом: Полный доступ к БД в исходном коде страницы." : "Symptom: Master database key visible in browser sources."}
+              {lang === "ru" ? "Вайб-решение: Result<T, E> паттерн и таймауты 5 сек." : "VibeDebt Fix: Result<T, E> & AbortController."}
+            </div>
+          </div>
+
+          <div className="p-5 rounded-xl border border-zinc-800 bg-zinc-900/40 sm:col-span-2 lg:col-span-2">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="w-5 h-5 rounded bg-zinc-800 text-zinc-300 text-xs font-mono flex items-center justify-center font-bold">5</span>
+              <span className="text-xs font-mono text-emerald-400 font-semibold">Testing Gap</span>
+            </div>
+            <h3 className="font-semibold text-sm text-white mb-1.5">
+              {lang === "ru" ? "Опасный разрыв в тестировании (Zero-Test Blindspot)" : "The Critical AI Testing Gap"}
+            </h3>
+            <p className="text-xs text-zinc-400 font-sans leading-relaxed mb-3">
+              {lang === "ru"
+                ? "Нейросеть генерирует разметку за секунды, но почти никогда не пишет тесты на граничные случаи. Без регрессионной страховки любой последующий промпт в Cursor может незаметно сломать авторизацию или биллинг."
+                : "AI creates code easily but fails to generate contextual regression tests. Without test harness, every new prompt risks breaking revenue."}
+            </p>
+            <div className="text-[11px] font-mono text-zinc-500 border-t border-zinc-800/80 pt-2">
+              {lang === "ru" ? "Вайб-решение: Автогенерация Vitest-сьютов на 4 сценария (валидный, пустой, неверный тип, границы)." : "VibeDebt Fix: Vitest 4-scenario edge-case suites."}
+            </div>
+          </div>
+        </div>
+
+        {/* REAL INCIDENTS KNOWLEDGE BASE */}
+        <div className="border border-zinc-800 rounded-2xl p-6 sm:p-8 bg-zinc-950/60">
+          <div className="flex items-center gap-2.5 mb-6">
+            <ShieldAlert size={18} className="text-rose-400" />
+            <h3 className="text-base sm:text-lg font-bold text-white font-mono">
+              {lang === "ru" ? "База реальных инцидентов: крах ИИ-кода в Production" : "Real Incident Reports: When AI Code Blew Up"}
+            </h3>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs font-mono">
+            <div className="p-4 rounded-xl border border-rose-500/20 bg-rose-500/5">
+              <div className="text-rose-400 font-bold mb-1.5">КЕЙС 1: Инцидент Replit</div>
+              <p className="text-zinc-300 font-sans leading-relaxed mb-2">
+                {lang === "ru"
+                  ? "ИИ-агент при попытке выполнить миграцию схемы запустил DROP DATABASE в боевом окружении из-за отсутствия жестких ограничений прав доступа."
+                  : "AI agent dropped production database while attempting migration due to lack of environment guardrails."}
+              </p>
+              <div className="text-[10px] text-zinc-400 pt-1 border-t border-rose-500/10">
+                🛡️ {lang === "ru" ? "Урок: Human-in-the-loop и строгий лимит опасных команд." : "Lesson: Human-in-the-loop controls."}
+              </div>
+            </div>
+
+            <div className="p-4 rounded-xl border border-amber-500/20 bg-amber-500/5">
+              <div className="text-amber-400 font-bold mb-1.5">КЕЙС 2: Supply Chain Slop</div>
+              <p className="text-zinc-300 font-sans leading-relaxed mb-2">
+                {lang === "ru"
+                  ? "Хакеры зарегистрировали свыше 200 пакетов в npm, имена которых регулярно выдумывали ChatGPT и Cursor, внедрив стилеры в десятки стартапов."
+                  : "Attackers claimed 200+ hallucinated npm names frequently hallucinated by models, injecting stealers."}
+              </p>
+              <div className="text-[10px] text-zinc-400 pt-1 border-t border-amber-500/10">
+                🛡️ {lang === "ru" ? "Урок: Автоматический аудит package.json на несуществующие библиотеки." : "Lesson: Automated registry validation."}
+              </div>
+            </div>
+
+            <div className="p-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5">
+              <div className="text-emerald-400 font-bold mb-1.5">КЕЙС 3: Supabase Service Role</div>
+              <p className="text-zinc-300 font-sans leading-relaxed mb-2">
+                {lang === "ru"
+                  ? "Cursor прописал SUPABASE_SERVICE_ROLE_KEY в клиентский компонент формы настроек, открыв административный доступ к БД всем пользователям в DevTools."
+                  : "Cursor put master key in 'use client' settings page, leaking admin DB privileges to all browsers."}
+              </p>
+              <div className="text-[10px] text-zinc-400 pt-1 border-t border-emerald-500/10">
+                🛡️ {lang === "ru" ? "Урок: Автоматическая изоляция приватных ключей в Server Actions." : "Lesson: Server Actions key isolation."}
+              </div>
             </div>
           </div>
         </div>
