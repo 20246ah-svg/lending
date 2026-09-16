@@ -252,7 +252,9 @@ export async function POST(req: Request) {
       const useStateMatches = (sampledCode.match(/useState\s*\(/g) || []).length;
       const secretMatches = (sampledCode.match(/(SERVICE_ROLE|SECRET_KEY|API_KEY|TOKEN)/gi) || []).length;
 
-      const godComponents: GodComponent[] = topLargest.map((f) => {
+      // Only treat files > 12 KB (~300 lines) as God Components!
+      const trulyLargeFiles = topLargest.filter((f) => (f.size || 0) > 12000);
+      const godComponents: GodComponent[] = trulyLargeFiles.slice(0, 4).map((f) => {
         const estLines = Math.round((f.size || 0) / 38);
         const issues: string[] = [];
         if (estLines > 800) {
@@ -274,17 +276,17 @@ export async function POST(req: Request) {
       });
 
       // Calculate Doomsday Score
-      let baseScore = 40;
+      let baseScore = 25;
       if (!hasTests) baseScore += 25; // No tests is a huge risk in AI projects
-      if (topLargest.some((f) => (f.size || 0) > 25000)) baseScore += 18; // Mega files
+      if (trulyLargeFiles.length > 0) baseScore += 18; // Mega files
       if (anyMatches > 5) baseScore += 12;
       if (secretMatches > 0) baseScore += 15;
       if (codeFiles.length > 50 && !hasTests) baseScore += 10;
       if (repoData.stargazers_count > 500 && hasTests) {
-        baseScore = Math.max(15, baseScore - 50);
+        baseScore = Math.max(12, baseScore - 50);
       }
 
-      const doomsdayScore = Math.min(96, Math.max(18, baseScore));
+      const doomsdayScore = Math.min(96, Math.max(12, baseScore));
       const spaghettiIndex = Math.min(9.9, Math.max(1.8, +(doomsdayScore / 10 + (hasTests ? -1.5 : 0.8)).toFixed(1)));
       const ghostTypes = anyMatches > 0 ? anyMatches * 4 + 6 : hasTypeScript ? 12 : 28;
       const collapseCommits =
@@ -333,32 +335,37 @@ export async function POST(req: Request) {
         });
       }
 
-      if (topLargest.length > 0 && (topLargest[0].size || 0) > 20000) {
+      if (trulyLargeFiles.length > 0 && (trulyLargeFiles[0].size || 0) > 20000) {
         antipatterns.push({
-          title: `Монолитный файл: ${topLargest[0].path}`,
+          title: `Монолитный файл: ${trulyLargeFiles[0].path}`,
           description: `Размер файла превышает 20 Кб (~${Math.round(
-            (topLargest[0].size || 0) / 38
+            (trulyLargeFiles[0].size || 0) / 38
           )} строк). Нейросеть начинает забывать начало файла при дописывании фич в конец.`,
           severity: "CRITICAL",
-          detectedIn: topLargest[0].path,
-          sampleBadCode: `// ${topLargest[0].path} содержит слишком много несвязанных обязанностей`,
+          detectedIn: trulyLargeFiles[0].path,
+          sampleBadCode: `// ${trulyLargeFiles[0].path} содержит слишком много несвязанных обязанностей`,
           sampleFix: `// Декомпозируйте файл на модули по правилу Single Responsibility Principle`,
         });
       }
 
       // DYNAMIC SURGICAL REFACTOR PROMPTS (KEY LEAD MAGNET)
       const mainFile = topLargest[0]?.path || "app/page.tsx";
-      const mainFileLines = Math.round((topLargest[0]?.size || 40000) / 38);
+      const mainFileSize = topLargest[0]?.size || 0;
+      const mainFileLines = Math.round(mainFileSize / 38);
+      const isTrulyGodFile = mainFileSize > 15000; // ~400+ lines
       const cleanBaseName = mainFile.split("/").pop()?.replace(/\.[^/.]+$/, "") || "component";
       const targetSubfolder = `/components/${cleanBaseName}`;
 
       const refactorSteps: RefactorStep[] = [
         {
           step: 1,
-          title: `Хирургический распил God-компонента ${mainFile}`,
-          estimatedTime: "15-20 минут",
+          title: isTrulyGodFile
+            ? `Хирургический распил God-компонента ${mainFile} (~${mainFileLines} строк)`
+            : `Архитектурная модульность и типизация ${mainFile}`,
+          estimatedTime: isTrulyGodFile ? "15-20 минут" : "10 минут",
           targetTool: "Cursor Composer / Claude 3.7",
-          prompt: `Ты — Senior Refactoring Agent в Cursor / Claude 3.7.
+          prompt: isTrulyGodFile
+            ? `Ты — Senior Refactoring Agent в Cursor / Claude 3.7.
 Твоя цель: безопасно разбить God-компонент '${mainFile}' (~${mainFileLines} строк кода) на модульные подкомпоненты внутри папки '${targetSubfolder}', сохранив все стейты, хуки, пропсы и стили без малейших визуальных или логических изменений.
 
 Строгие правила безопасного рефакторинга:
@@ -369,7 +376,10 @@ export async function POST(req: Request) {
    - '${targetSubfolder}/MainView.tsx'
    - '${targetSubfolder}/Modals.tsx'
 4. Все стейты и методы передай через пропсы или создай кастомный хук '${targetSubfolder}/use${cleanBaseName.charAt(0).toUpperCase() + cleanBaseName.slice(1)}State.ts'.
-5. Напиши строгие TypeScript interfaces без использования 'any'.`,
+5. Напиши строгие TypeScript interfaces без использования 'any'.`
+            : `Ты — Senior Software Architect в Cursor / Claude 3.7.
+В репозитории ${owner}/${repo} модуль '${mainFile}' (~${mainFileLines} строк) выполняет ключевую роль.
+Задача: структурируй его архитектуру, выдели чистые вспомогательные функции и стейт в '${targetSubfolder}', сохранив строгую типизацию TypeScript без единого 'any'. Верни полный обновленный код.`,
         },
         {
           step: 2,
@@ -449,105 +459,221 @@ function analyzeSnippet(code: string): AuditReport {
   const useStateMatches = (code.match(/useState\s*\(/g) || []).length;
   const secretMatches = (code.match(/(SECRET|SERVICE_ROLE|API_KEY|BEARER|TOKEN)/gi) || []).length;
   const hasClient = code.includes('"use client"') || code.includes("'use client'");
+  const hasObjectDepLoop = /useEffect\s*\([^,]+,\s*\[[^\]]*(filters|options|params|config|query|data|state|{\s*})/i.test(code);
 
-  let score = 45;
-  if (lineCount > 300) score += 20;
-  if (lineCount > 700) score += 15;
-  if (anyMatches > 2) score += 12;
-  if (secretMatches > 0 && hasClient) score += 22;
-  if (useEffectMatches > 2 && useStateMatches > 4) score += 10;
+  const isMonolith = lineCount >= 250;
 
-  const doomsdayScore = Math.min(96, Math.max(30, score));
-  const spaghettiIndex = Math.min(9.8, Math.max(3.0, +(doomsdayScore / 10).toFixed(1)));
+  // Accurate, calibrated Doomsday score
+  let score = 10;
+  if (hasClient && secretMatches > 0) score += 42; // Critical credential leak
+  else if (secretMatches > 0) score += 18;
+
+  if (anyMatches > 0) score += Math.min(22, anyMatches * 7);
+  if (hasObjectDepLoop) score += 18;
+  if (useEffectMatches > 2 && useStateMatches > 3) score += 12;
+
+  if (lineCount > 250) score += 15;
+  if (lineCount > 600) score += 20;
+
+  const doomsdayScore = Math.min(95, Math.max(10, score));
+  const spaghettiIndex = Math.min(9.8, Math.max(1.8, +(doomsdayScore / 10).toFixed(1)));
 
   const antipatterns: Antipattern[] = [];
 
   if (hasClient && secretMatches > 0) {
     antipatterns.push({
-      title: "Секретные ключи в 'use client' файле",
-      description: "Обнаружены секретные идентификаторы внутри клиентского компонента. Этот код собирается в бандл браузера.",
+      title: "Секретные ключи в клиентском бандле ('use client')",
+      description: "Обнаружены приватные идентификаторы (SERVICE_ROLE_KEY / API_KEY) внутри клиентского компонента. Этот ключ попадает в сборку браузера и доступен в DevTools любому пользователю.",
       severity: "CRITICAL",
       detectedIn: "snippet:client-bundle",
-      sampleBadCode: `"use client";\nconst key = process.env.SUPABASE_SERVICE_ROLE_KEY;`,
-      sampleFix: `// Вынесите приватную логику в app/actions/route.ts или Server Action`,
+      sampleBadCode: `"use client";\nconst supabase = createClient(..., process.env.SUPABASE_SERVICE_ROLE_KEY!);`,
+      sampleFix: `// Вынесите приватные операции в app/actions/service.ts с 'use server':\n'use server';\nexport async function getSecureData() { ... }`,
+    });
+  }
+
+  if (hasObjectDepLoop) {
+    antipatterns.push({
+      title: "Бесконечный цикл ререндера в useEffect",
+      description: "Объект в массиве зависимостей useEffect пересоздается при каждом рендере, вызывая лавину сетевых запросов и фриз браузера.",
+      severity: "HIGH",
+      detectedIn: "snippet:lifecycle",
+      sampleBadCode: `const [filters, setFilters] = useState({ page: 1 });\nuseEffect(() => { ... }, [filters]); // Ссылка пересоздается!`,
+      sampleFix: `useEffect(() => { ... }, [filters.page]); // Стабильные примитивные зависимости`,
     });
   }
 
   if (anyMatches > 0) {
     antipatterns.push({
       title: `Обнаружены типы 'any' (${anyMatches} шт.)`,
-      description: "ИИ отключил проверку типов. Любое изменение структуры данных приведет к необработанному крашу у клиента.",
+      description: "Отключение строгой проверки типов TypeScript. Любое изменение структуры ответа сервера приведет к необработанному крашу у клиента.",
       severity: "HIGH",
       detectedIn: "snippet:types",
       sampleBadCode: `const [data, setData] = useState<any>(null);`,
-      sampleFix: `interface UserPayload {\n  id: string;\n  name: string;\n}`,
+      sampleFix: `interface DataItem { id: string; name: string; }\nconst [data, setData] = useState<DataItem | null>(null);`,
     });
   }
 
-  if (lineCount > 350) {
+  if (isMonolith) {
     antipatterns.push({
       title: `Файл превышает рекомендуемый лимит (${lineCount} строк)`,
-      description: "Для эффективной работы ИИ-ассистентов размер компонента не должен превышать 250-300 строк.",
-      severity: "CRITICAL",
+      description: "Для эффективной работы ИИ-ассистентов размер компонента не должен превышать 200-250 строк. В огромных файлах Cursor начинает затирать соседний код.",
+      severity: lineCount > 600 ? "CRITICAL" : "HIGH",
       detectedIn: "snippet:monolith",
-      sampleBadCode: `// Один файл управляет ${useStateMatches} состояниями и ${useEffectMatches} эффектами`,
-      sampleFix: `// Разделите на изолированные компоненты с передачей пропсов или через контекст`,
+      sampleBadCode: `// Один файл объединяет ${useStateMatches} стейтов и ${lineCount} строк разметки`,
+      sampleFix: `// Разделите на изолированные субкомпоненты внутри /components/`,
     });
   }
+
+  // God components ONLY if lineCount >= 250!
+  const godComponents: GodComponent[] = isMonolith
+    ? [
+        {
+          name: "PastedCodeSnippet.tsx",
+          lines: lineCount,
+          issues: [
+            `${lineCount} строк в едином модуле (порог: 250 строк)`,
+            `${anyMatches} приведений типа any`,
+            `${useStateMatches} независимых состояний`,
+          ],
+          risk: lineCount > 600 ? "critical" : "high",
+        },
+      ]
+    : [];
+
+  // Code snippet for prompt: never cut off mid-word or with ugly ellipsis
+  const codeSnippetForPrompt =
+    code.length <= 1400
+      ? code
+      : `${code.slice(0, 1000)}\n// ... [код сокращен для читаемости]`;
+
+  const refactorSteps: RefactorStep[] = [];
+  let stepNum = 1;
+
+  if (hasClient && secretMatches > 0) {
+    refactorSteps.push({
+      step: stepNum++,
+      title: "Хирургическая изоляция API ключей в Server Actions",
+      estimatedTime: "5-10 минут",
+      targetTool: "Cursor Cmd+K / Claude 3.7",
+      prompt: `Ты — Senior Security Engineer в Cursor.
+В клиентском компоненте обнаружена критическая утечка приватных ключей базы данных (SUPABASE_SERVICE_ROLE_KEY).
+Задача: перенеси приватные операции с базой и ключами из клиентского бандла в безопасный Server Action в 'app/actions/dashboard.ts'.
+
+Код для исправления:
+\`\`\`tsx
+${codeSnippetForPrompt}
+\`\`\`
+
+Требования:
+1. Пометь файл 'app/actions/dashboard.ts' директивой 'use server'.
+2. Клиентский компонент должен запрашивать данные асинхронно через этот Server Action без прямого импорта мастер-ключа.
+3. Верни готовый код Server Action и точечный diff клиентского вызова.`,
+    });
+  }
+
+  if (hasObjectDepLoop) {
+    refactorSteps.push({
+      step: stepNum++,
+      title: "Устранение циклов ререндеринга и стабилизация useEffect",
+      estimatedTime: "10 минут",
+      targetTool: "Cursor Composer",
+      prompt: `Ты — Senior React Performance Engineer в Cursor.
+В коде ниже обнаружена работа с useEffect, вызывающая бесконечный цикл ререндеров из-за ссылочной нестабильности объектов:
+
+\`\`\`tsx
+${codeSnippetForPrompt}
+\`\`\`
+
+Задача:
+1. Замени объектную зависимость в useEffect на примитивные поля (например, filters.page, filters.search) или используй useMemo.
+2. Добавь AbortController / cleanup функцию для предотвращения гонок состояний при быстром вводе.
+3. Верни чистый, оптимизированный компонент целиком.`,
+    });
+  }
+
+  if (anyMatches > 0) {
+    refactorSteps.push({
+      step: stepNum++,
+      title: `Замена 'any' (${anyMatches} шт.) на строгие типы и Zod`,
+      estimatedTime: "10 минут",
+      targetTool: "Cursor Cmd+K",
+      prompt: `Ты — TypeScript Strictness Architect в Cursor.
+В коде используются небезопасные типы 'any':
+
+\`\`\`tsx
+${codeSnippetForPrompt}
+\`\`\`
+
+Задача:
+1. Замени все 'any' на строгие TypeScript interfaces/types.
+2. Напиши Zod-схему для валидации входящих данных ответа с сервера.
+3. Добавь безопасную обработку ошибок через schema.safeParse().
+Верни готовый код без 'any'.`,
+    });
+  }
+
+  if (isMonolith) {
+    refactorSteps.push({
+      step: stepNum++,
+      title: `Хирургический распил God-компонента (${lineCount} строк)`,
+      estimatedTime: "20 минут",
+      targetTool: "Cursor Composer (Cmd+I)",
+      prompt: `Ты — Senior Refactoring Agent в Cursor / Claude 3.7.
+Перед тобой God-компонент на ${lineCount} строк.
+Твоя цель: разбить этот компонент на модульные подкомпоненты внутри папки '/components', сохранив все стейты (${useStateMatches} шт.), обработчики событий и пропсы без малейших визуальных или логических изменений.
+
+Строгие правила:
+1. НЕ сокращай код и не пиши комментарии вроде '// rest of code stays here'.
+2. Сохрани корневой файл как чистый оркестратор не длиннее 100 строк.
+3. Вынеси тяжелые части разметки в '/components/ViewSection.tsx' и кастомный хук 'useComponentState.ts'.
+4. Напиши строгие TypeScript interfaces без 'any'.`,
+    });
+  }
+
+  if (refactorSteps.length < 2) {
+    refactorSteps.push({
+      step: stepNum++,
+      title: "Создание модульных тестов с Vitest",
+      estimatedTime: "15 минут",
+      targetTool: "Claude 3.7 Thinking",
+      prompt: `Ты — Senior QA Automation Lead.
+Для следующего компонента напиши 3 автоматических модульных теста с использованием Vitest и @testing-library/react:
+
+\`\`\`tsx
+${codeSnippetForPrompt}
+\`\`\`
+
+1. Тест рендера начального состояния.
+2. Тест обработки сетевой ошибки и состояния загрузки.
+3. Тест пользовательского взаимодействия.`,
+    });
+  }
+
+  const timeToCollapse =
+    doomsdayScore > 75
+      ? `${Math.max(3, Math.round((100 - doomsdayScore) * 1.1))} коммитов`
+      : doomsdayScore > 45
+      ? `${Math.max(15, Math.round((100 - doomsdayScore) * 1.5))} коммитов`
+      : "100+ коммитов (Безопасно)";
 
   return {
     title: "Аудит пользовательского кода",
     repoName: "custom/snippet",
     isRealRepo: true,
     doomsdayScore,
-    timeToCollapse: `${Math.max(3, Math.round((100 - doomsdayScore) * 1.1))} коммитов`,
-    estimatedFixCost: Math.round((doomsdayScore * 50) / 100) * 100,
-    criticalBugsCount: antipatterns.length || 1,
+    timeToCollapse,
+    estimatedFixCost: Math.round((doomsdayScore * 40) / 50) * 50,
+    criticalBugsCount: antipatterns.length,
     spaghettiIndex,
-    ghostTypesCount: anyMatches * 3 + 5,
+    ghostTypesCount: anyMatches * 3 + 2,
     filesScanned: 1,
     hasTests: false,
-    godComponents: [
-      {
-        name: "PastedCodeSnippet.tsx",
-        lines: lineCount,
-        issues: [
-          `${lineCount} строк в едином модуле`,
-          `${anyMatches} приведений типа any`,
-          `${useStateMatches} независимых состояний`,
-        ],
-        risk: lineCount > 400 ? "critical" : "high",
-      },
-    ],
+    godComponents,
     antipatterns,
-    refactorSteps: [
-      {
-        step: 1,
-        title: `Хирургический распил компонента (${lineCount} строк)`,
-        estimatedTime: "15 минут",
-        targetTool: "Cursor Composer / Claude 3.7",
-        prompt: `Ты — Senior Refactoring Agent в Cursor / Claude 3.7.
-Перед тобой God-компонент на ${lineCount} строк.
-Твоя цель: разбить этот God-компонент на модульные подкомпоненты внутри папки '/components', сохранив все стейты (${useStateMatches} шт.), обработчики событий и пропсы без малейших визуальных или логических изменений.
-
-Строгие правила:
-1. НЕ сокращай код и не пиши комментарии вроде '// rest of code stays here'.
-2. Сохрани корневой файл как чистый оркестратор.
-3. Вынеси тяжелые части в '/components/ViewSection.tsx' и кастомный хук 'useComponentState.ts'.
-4. Напиши строгие TypeScript interfaces без 'any'.`,
-      },
-      {
-        step: 2,
-        title: "Изоляция типов и замена 'any'",
-        estimatedTime: "10 минут",
-        targetTool: "Cursor Cmd+K",
-        prompt: `Замени все 'any' в следующем коде на строгие типы TypeScript. Напиши Zod-схемы для валидации внешних данных:\n\n${code.slice(
-          0,
-          260
-        )}...`,
-      },
-    ],
-    diagnosticsSummary: `Проанализировано ${lineCount} строк кода. Найдено ${anyMatches} 'any', ${useEffectMatches} эффектов, ${useStateMatches} хуков состояния.`,
+    refactorSteps,
+    diagnosticsSummary: isMonolith
+      ? `Проанализировано ${lineCount} строк кода. Файл превышает рекомендуемый порог размера (God-компонент). Найдено ${antipatterns.length} архитектурных рисков.`
+      : `Проанализировано ${lineCount} строк кода. Размер компонента в норме (<250 строк, God-компонентов нет). Выявлено ${antipatterns.length} замечаний безопасности и типизации.`,
   };
 }
 

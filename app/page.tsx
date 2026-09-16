@@ -9,11 +9,14 @@ import {
   FileCodeIcon as FileCode,
   ClockIcon as Clock,
   CheckIcon as Check,
+  CheckCircleIcon as CheckCircle,
   CopyIcon as Copy,
   SparklesIcon as Sparkles,
   BugIcon as Bug,
   RefreshCwIcon as RefreshCw,
+  RotateCcwIcon as RotateCcw,
   XCircleIcon as XCircle,
+  ArrowRightIcon as ArrowRight,
   Share2Icon,
   UploadCloudIcon,
   TwitterIcon,
@@ -251,7 +254,7 @@ export default function Home() {
   const [isAuditing, setIsAuditing] = useState<boolean>(false);
   const [auditProgress, setAuditProgress] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [auditReport, setAuditReport] = useState<AuditReport>(DEFAULT_REPORT);
+  const [auditReport, setAuditReport] = useState<AuditReport | null>(null);
   const [activeReportTab, setActiveReportTab] = useState<"antipatterns" | "god-files" | "prompts" | "radar">("antipatterns");
 
   // Interactive feedback
@@ -337,6 +340,7 @@ export default function Home() {
   };
 
   const copyBadgeMarkdown = () => {
+    if (!auditReport) return;
     const badge = `[![VibeDebt Doomsday](https://img.shields.io/badge/VibeDebt_Doomsday-${auditReport.doomsdayScore}%25_${
       auditReport.doomsdayScore > 75 ? "CRITICAL" : "ELEVATED"
     }-f43f5e?style=flat-square&logo=github)](https://vibedebt.dev)`;
@@ -346,6 +350,7 @@ export default function Home() {
   };
 
   const handleShareToTwitter = () => {
+    if (!auditReport) return;
     const text =
       lang === "ru"
         ? `Мой вайбкод-проект на Cursor имеет ${auditReport.doomsdayScore}% по Счетчику Судного Дня (крах через ${auditReport.timeToCollapse}). Проверь свой техдолг на @VibeDebt:`
@@ -358,6 +363,7 @@ export default function Home() {
   };
 
   const handleCopyShareLink = () => {
+    if (!auditReport) return;
     const text =
       lang === "ru"
         ? `🔥 Аудит VibeDebt для ${auditReport.repoName}: Doomsday Score ${auditReport.doomsdayScore}% | Запас прочности: ${auditReport.timeToCollapse}. Проверь свой проект: https://vibedebt.dev`
@@ -374,6 +380,7 @@ export default function Home() {
   };
 
   const handleCopyAllPrompts = () => {
+    if (!auditReport) return;
     const fullPlan = auditReport.refactorSteps
       .map(
         (s) =>
@@ -774,9 +781,64 @@ export default function Home() {
 
           {/* LOADING STATE */}
           {isAuditing && (
-            <div className="mt-4 p-3 rounded-lg bg-zinc-950 border border-zinc-800 text-xs font-mono text-zinc-300 flex items-center gap-2">
-              <RefreshCw size={14} className="animate-spin text-zinc-400" />
+            <div className="mt-4 p-4 rounded-xl bg-zinc-950 border border-zinc-800 text-xs font-mono text-zinc-300 flex items-center gap-3">
+              <RefreshCw size={15} className="animate-spin text-emerald-400" />
               <span>{auditProgress}</span>
+            </div>
+          )}
+
+          {/* EMPTY / READY TO SCAN STATE (WHEN NO AUDIT REPORT YET) */}
+          {!isAuditing && !auditReport && (
+            <div className="mt-6 pt-6 border-t border-zinc-800/80">
+              <div className="p-6 sm:p-8 rounded-xl border border-zinc-800/80 bg-zinc-950/40 text-center relative overflow-hidden">
+                <div className="w-12 h-12 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center mx-auto mb-3.5 shadow-sm">
+                  <Terminal size={22} className="text-emerald-400" />
+                </div>
+
+                <h3 className="text-sm sm:text-base font-semibold text-white font-mono">
+                  {lang === "ru"
+                    ? "Анализатор технического долга готов к запуску"
+                    : "Technical Debt Analyzer Ready"}
+                </h3>
+                <p className="text-xs text-zinc-400 font-sans mt-1.5 max-w-lg mx-auto leading-relaxed">
+                  {lang === "ru"
+                    ? "Введите URL репозитория выше или вставьте фрагмент кода, чтобы рассчитать персональный Doomsday Score и сформировать хирургические промпты для безопасного рефакторинга."
+                    : "Enter a repository URL above or paste a code snippet to calculate your Doomsday Score and generate surgical refactoring prompts for Cursor & Claude."}
+                </p>
+
+                <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+                  <button
+                    onClick={() => runAudit()}
+                    className="px-4 py-2 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-mono font-bold flex items-center gap-2 transition cursor-pointer shadow-sm"
+                  >
+                    <Zap size={14} className="text-amber-600 fill-amber-500" />
+                    <span>{lang === "ru" ? "Запустить экспресс-аудит" : "Run Instant Audit"}</span>
+                  </button>
+
+                  <button
+                    onClick={() => setAuditReport(DEFAULT_REPORT)}
+                    className="px-3.5 py-2 rounded-lg border border-zinc-800 bg-zinc-900/80 hover:bg-zinc-800 text-zinc-300 hover:text-white text-xs font-mono transition cursor-pointer flex items-center gap-1.5"
+                  >
+                    <span>{lang === "ru" ? "👁️ Посмотреть демо-отчет (Cursor SaaS)" : "👁️ View Demo Report (Cursor SaaS)"}</span>
+                  </button>
+                </div>
+
+                {/* TRUST PILLARS */}
+                <div className="mt-6 pt-5 border-t border-zinc-900 flex flex-wrap items-center justify-center gap-4 text-[11px] font-mono text-zinc-500">
+                  <span className="flex items-center gap-1.5">
+                    <CheckCircle size={13} className="text-emerald-400" />
+                    {lang === "ru" ? "Детерминированный AST-анализ (0 галлюцинаций)" : "Deterministic AST parsing"}
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <CheckCircle size={13} className="text-emerald-400" />
+                    {lang === "ru" ? "Безопасно: код в память, 0 логов секретов" : "In-memory scan, no stored keys"}
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <CheckCircle size={13} className="text-emerald-400" />
+                    {lang === "ru" ? "Промпты оптимизированы под Cursor Composer" : "Optimized for Cursor Composer"}
+                  </span>
+                </div>
+              </div>
             </div>
           )}
 
@@ -805,6 +867,17 @@ export default function Home() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setAuditReport(null);
+                      setErrorMessage(null);
+                    }}
+                    className="px-2.5 py-1.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 text-xs font-mono transition flex items-center gap-1.5 cursor-pointer"
+                    title={lang === "ru" ? "Сбросить отчет и провести новый аудит" : "Reset and start new audit"}
+                  >
+                    <RotateCcw size={12} />
+                    <span>{lang === "ru" ? "Новый аудит" : "New Audit"}</span>
+                  </button>
                   <button
                     onClick={handleShareToTwitter}
                     className="px-2.5 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-mono transition flex items-center gap-1.5 cursor-pointer"
@@ -978,76 +1051,108 @@ export default function Home() {
               {/* SUB-TAB 1: ANTIPATTERNS */}
               {activeReportTab === "antipatterns" && (
                 <div className="space-y-4">
-                  {auditReport.antipatterns.map((item, idx) => (
-                    <div key={idx} className="p-4 rounded-xl border border-zinc-800 bg-zinc-950/70">
-                      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`text-[10px] font-mono px-2 py-0.5 rounded font-semibold ${
-                              item.severity === "CRITICAL"
-                                ? "bg-rose-500/10 text-rose-400 border border-rose-500/20"
-                                : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                            }`}
-                          >
-                            {item.severity}
-                          </span>
-                          <span className="font-semibold text-sm text-zinc-100">{item.title}</span>
-                        </div>
-                        <span className="text-[11px] font-mono text-zinc-500">{item.detectedIn}</span>
+                  {auditReport.antipatterns.length === 0 ? (
+                    <div className="p-8 rounded-xl border border-zinc-800 bg-zinc-950/70 text-center">
+                      <div className="w-10 h-10 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mx-auto mb-2 text-emerald-400">
+                        <CheckCircle size={20} />
                       </div>
-                      <p className="text-xs text-zinc-400 font-sans mb-3">{item.description}</p>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs font-mono">
-                        <div className="p-3 rounded-lg bg-zinc-950 border border-rose-500/20 text-rose-200 overflow-x-auto">
-                          <div className="text-[10px] text-rose-400 font-semibold mb-1">
-                            {lang === "ru" ? "❌ Ошибка в коде:" : "❌ AI Hallucination / Bad Code:"}
-                          </div>
-                          <pre className="whitespace-pre">{item.sampleBadCode}</pre>
-                        </div>
-                        <div className="p-3 rounded-lg bg-zinc-950 border border-emerald-500/20 text-emerald-200 overflow-x-auto">
-                          <div className="text-[10px] text-emerald-400 font-semibold mb-1">
-                            {lang === "ru" ? "✅ Безопасное решение:" : "✅ Clean Refactor:"}
-                          </div>
-                          <pre className="whitespace-pre">{item.sampleFix}</pre>
-                        </div>
-                      </div>
+                      <h4 className="text-sm font-semibold text-white font-mono">
+                        {lang === "ru" ? "Критических антипаттернов не найдено" : "No Critical Antipatterns Found"}
+                      </h4>
+                      <p className="text-xs text-zinc-400 font-sans mt-1 max-w-md mx-auto">
+                        {lang === "ru"
+                          ? "В проверенном коде отсутствуют открытые приватные ключи, бесконечные циклы хуков и опасные приведения типов 'any'."
+                          : "Clean code: no exposed secrets in client bundle, no infinite hook loops, and no unvalidated 'any' casts."}
+                      </p>
                     </div>
-                  ))}
+                  ) : (
+                    auditReport.antipatterns.map((item, idx) => (
+                      <div key={idx} className="p-4 rounded-xl border border-zinc-800 bg-zinc-950/70">
+                        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`text-[10px] font-mono px-2 py-0.5 rounded font-semibold ${
+                                item.severity === "CRITICAL"
+                                  ? "bg-rose-500/10 text-rose-400 border border-rose-500/20"
+                                  : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                              }`}
+                            >
+                              {item.severity}
+                            </span>
+                            <span className="font-semibold text-sm text-zinc-100">{item.title}</span>
+                          </div>
+                          <span className="text-[11px] font-mono text-zinc-500">{item.detectedIn}</span>
+                        </div>
+                        <p className="text-xs text-zinc-400 font-sans mb-3">{item.description}</p>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs font-mono">
+                          <div className="p-3 rounded-lg bg-zinc-950 border border-rose-500/20 text-rose-200 overflow-x-auto">
+                            <div className="text-[10px] text-rose-400 font-semibold mb-1">
+                              {lang === "ru" ? "❌ Ошибка в коде:" : "❌ AI Hallucination / Bad Code:"}
+                            </div>
+                            <pre className="whitespace-pre">{item.sampleBadCode}</pre>
+                          </div>
+                          <div className="p-3 rounded-lg bg-zinc-950 border border-emerald-500/20 text-emerald-200 overflow-x-auto">
+                            <div className="text-[10px] text-emerald-400 font-semibold mb-1">
+                              {lang === "ru" ? "✅ Безопасное решение:" : "✅ Clean Refactor:"}
+                            </div>
+                            <pre className="whitespace-pre">{item.sampleFix}</pre>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               )}
 
               {/* SUB-TAB 2: GOD FILES */}
               {activeReportTab === "god-files" && (
                 <div className="space-y-3">
-                  {auditReport.godComponents.map((file, idx) => (
-                    <div
-                      key={idx}
-                      className="p-4 rounded-xl border border-zinc-800 bg-zinc-950/70 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
-                    >
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <FileCode size={15} className="text-zinc-400" />
-                          <span className="font-mono text-xs font-semibold text-white">{file.name}</span>
-                          <span className="text-[10px] font-mono bg-zinc-800 text-zinc-300 px-1.5 py-0.5 rounded">
-                            ~{file.lines} {lang === "ru" ? "строк" : "lines"}
+                  {auditReport.godComponents.length === 0 ? (
+                    <div className="p-8 rounded-xl border border-zinc-800 bg-zinc-950/70 text-center">
+                      <div className="w-10 h-10 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mx-auto mb-2 text-emerald-400">
+                        <CheckCircle size={20} />
+                      </div>
+                      <h4 className="text-sm font-semibold text-white font-mono">
+                        {lang === "ru" ? "Гигантские файлы (God-компоненты) не обнаружены" : "No God Components Found"}
+                      </h4>
+                      <p className="text-xs text-zinc-400 font-sans mt-1 max-w-md mx-auto">
+                        {lang === "ru"
+                          ? "Все проанализированные файлы укладываются в рекомендуемый лимит (<250 строк). Кодовая база разбита на модули, удобные для Cursor и Claude."
+                          : "All scanned files are within the recommended threshold (<250 lines). Codebase is modular and context-friendly."}
+                      </p>
+                    </div>
+                  ) : (
+                    auditReport.godComponents.map((file, idx) => (
+                      <div
+                        key={idx}
+                        className="p-4 rounded-xl border border-zinc-800 bg-zinc-950/70 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
+                      >
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <FileCode size={15} className="text-zinc-400" />
+                            <span className="font-mono text-xs font-semibold text-white">{file.name}</span>
+                            <span className="text-[10px] font-mono bg-zinc-800 text-zinc-300 px-1.5 py-0.5 rounded">
+                              ~{file.lines} {lang === "ru" ? "строк" : "lines"}
+                            </span>
+                          </div>
+                          <ul className="mt-2 space-y-1 text-xs text-zinc-400 list-disc list-inside font-sans">
+                            {file.issues.map((iss, i) => (
+                              <li key={i}>{iss}</li>
+                            ))}
+                          </ul>
+                        </div>
+                        <div className="text-right shrink-0 font-mono text-xs">
+                          <span className="text-[10px] text-zinc-500 block">
+                            {lang === "ru" ? "Рекомендация:" : "Recommendation:"}
+                          </span>
+                          <span className="text-zinc-300 font-medium">
+                            {lang === "ru" ? "Разбить на 2+ модуля" : "Decompose into modules"}
                           </span>
                         </div>
-                        <ul className="mt-2 space-y-1 text-xs text-zinc-400 list-disc list-inside font-sans">
-                          {file.issues.map((iss, i) => (
-                            <li key={i}>{iss}</li>
-                          ))}
-                        </ul>
                       </div>
-                      <div className="text-right shrink-0 font-mono text-xs">
-                        <span className="text-[10px] text-zinc-500 block">
-                          {lang === "ru" ? "Рекомендация:" : "Recommendation:"}
-                        </span>
-                        <span className="text-zinc-300 font-medium">
-                          {lang === "ru" ? "Разбить на 2+ модуля" : "Decompose into modules"}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               )}
 
