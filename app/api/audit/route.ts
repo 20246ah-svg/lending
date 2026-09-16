@@ -158,9 +158,12 @@ export async function POST(req: Request) {
       }
 
       // 3. Inspect package.json if present
-      let packageJsonData: any = null;
+      interface PackageManifest {
+        dependencies?: Record<string, string>;
+        devDependencies?: Record<string, string>;
+      }
+      let packageJsonData: PackageManifest | null = null;
       let hasTests = false;
-      let depsCount = 0;
       let hasTypeScript = false;
 
       const hasPackageJson = treeItems.some((item) => item.path === "package.json");
@@ -179,12 +182,12 @@ export async function POST(req: Request) {
             const pkgBody = await pkgRes.json();
             if (pkgBody.content) {
               const decoded = Buffer.from(pkgBody.content, "base64").toString("utf-8");
-              packageJsonData = JSON.parse(decoded);
+              const manifest = JSON.parse(decoded) as PackageManifest;
+              packageJsonData = manifest;
               const allDeps = {
-                ...(packageJsonData.dependencies || {}),
-                ...(packageJsonData.devDependencies || {}),
+                ...(manifest.dependencies || {}),
+                ...(manifest.devDependencies || {}),
               };
-              depsCount = Object.keys(allDeps).length;
 
               const testLibs = ["jest", "vitest", "playwright", "cypress", "mocha", "ava", "supertest"];
               hasTests = Object.keys(allDeps).some((d) => testLibs.some((tl) => d.includes(tl)));
@@ -249,8 +252,6 @@ export async function POST(req: Request) {
 
       // Heuristic calculations from real repo data
       const anyMatches = (sampledCode.match(/\bas any\b/g) || []).length;
-      const useEffectMatches = (sampledCode.match(/useEffect\s*\(/g) || []).length;
-      const useStateMatches = (sampledCode.match(/useState\s*\(/g) || []).length;
       const secretMatches = (sampledCode.match(/(SERVICE_ROLE|SECRET_KEY|API_KEY|TOKEN)/gi) || []).length;
 
       // Only treat files > 12 KB (~300 lines) as God Components!
@@ -340,7 +341,12 @@ export async function POST(req: Request) {
       }
 
       if (packageJsonData) {
-        const hasLockRisk = !treeItems.some((f: any) => f.path.includes("package-lock.json") || f.path.includes("pnpm-lock.yaml") || f.path.includes("yarn.lock"));
+        const hasLockRisk = !treeItems.some(
+          (f: { path: string }) =>
+            f.path.includes("package-lock.json") ||
+            f.path.includes("pnpm-lock.yaml") ||
+            f.path.includes("yarn.lock")
+        );
         if (hasLockRisk) {
           antipatterns.push({
             title: "Supply Chain Risk: Отсутствие lock-файла зависимостей",
@@ -464,10 +470,14 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ error: "Не переданы параметры для анализа" }, { status: 400 });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("Audit API Error:", err);
     return NextResponse.json(
-      { error: `Внутренняя ошибка сервера при аудите: ${err?.message || "Неизвестная ошибка"}` },
+      {
+        error: `Внутренняя ошибка сервера при аудите: ${
+          err instanceof Error ? err.message : "Неизвестная ошибка"
+        }`,
+      },
       { status: 500 }
     );
   }
