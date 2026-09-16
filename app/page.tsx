@@ -1,7 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from "react";
-import Image from "next/image";
+import React, { useState } from "react";
 import dynamic from "next/dynamic";
 import {
   TerminalIcon as Terminal,
@@ -13,11 +12,7 @@ import {
   CheckIcon as Check,
   CopyIcon as Copy,
   SparklesIcon as Sparkles,
-  BugIcon as Bug,
-  RotateCcwIcon as RotateCcw,
-  ArrowRightIcon as ArrowRight,
   Share2Icon,
-  TwitterIcon,
   GithubIcon,
 } from "@/components/icons";
 
@@ -25,6 +20,7 @@ import ParticleBackground from "@/components/canvas/ParticleBackground";
 import TiltCard from "@/components/ui/TiltCard";
 import KineticTicker from "@/components/ui/KineticTicker";
 import RadarGauge from "@/components/ui/RadarGauge";
+import CodeShowcase from "@/components/ui/CodeShowcase";
 
 // Dynamically load WebGL Scene to ensure smooth client-only execution
 const HeroScene = dynamic(() => import("@/components/canvas/HeroScene"), {
@@ -257,13 +253,12 @@ export default function Home() {
   const [auditProgress, setAuditProgress] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [auditReport, setAuditReport] = useState<AuditReport | null>(null);
-  const [activeReportTab, setActiveReportTab] = useState<"antipatterns" | "god-files" | "prompts" | "badge">("antipatterns");
+  const [activeReportTab, setActiveReportTab] = useState<"antipatterns" | "god-files" | "prompts">("antipatterns");
 
   // Feedback states
   const [copiedPromptIdx, setCopiedPromptIdx] = useState<number | null>(null);
   const [copiedBadge, setCopiedBadge] = useState<boolean>(false);
   const [copiedCli, setCopiedCli] = useState<boolean>(false);
-  const [copiedAllPrompts, setCopiedAllPrompts] = useState<boolean>(false);
   const [targetAiTool, setTargetAiTool] = useState<"cursor" | "claude">("cursor");
 
   // Calculator State
@@ -333,16 +328,6 @@ export default function Home() {
     setTimeout(() => setCopiedCli(false), 2000);
   };
 
-  const handleCopyAllPrompts = () => {
-    if (!auditReport) return;
-    const text = auditReport.refactorSteps
-      .map((s) => `### Шаг ${s.step}: ${s.title}\n\n${s.prompt}\n\n---\n`)
-      .join("\n");
-    navigator.clipboard.writeText(text);
-    setCopiedAllPrompts(true);
-    setTimeout(() => setCopiedAllPrompts(false), 2000);
-  };
-
   // Dynamic Calculator Result
   const calculateDoomsday = () => {
     let score = 20;
@@ -375,14 +360,14 @@ export default function Home() {
       <ParticleBackground />
 
       {/* Cybernetic Subtle Grid */}
-      <div className="fixed inset-0 cyber-grid pointer-events-none opacity-40 z-0" />
+      <div className="fixed inset-0 cyber-grid pointer-events-none opacity-30 z-0" />
 
       {/* 2. Sleek Cyber Header */}
-      <header className="sticky top-0 z-50 backdrop-blur-xl border-b border-zinc-800/80 bg-[#050508]/80 transition-all">
+      <header className="sticky top-0 z-50 backdrop-blur-xl border-b border-zinc-800/80 bg-[#050508]/85 transition-all">
         <div className="max-w-7xl mx-auto px-4 sm:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center shadow-[0_0_15px_rgba(16,185,129,0.2)]">
-              <Zap size={18} className="text-emerald-400 fill-emerald-400/20" />
+              <Zap size={16} className="text-emerald-400 fill-emerald-400/20" />
             </div>
             <div className="flex items-center gap-2">
               <span className="font-mono font-bold tracking-wider text-base text-white">
@@ -396,19 +381,19 @@ export default function Home() {
 
           <nav className="hidden md:flex items-center gap-8 text-xs font-mono text-zinc-400 tracking-wider">
             <a href="#audit-tool" className="hover:text-emerald-400 transition-colors">
-              // AUDIT
+              {lang === "ru" ? "// АУДИТ" : "// AUDIT"}
             </a>
             <a href="#calculator" className="hover:text-emerald-400 transition-colors">
-              // DOOMSDAY RADAR
+              {lang === "ru" ? "// КАЛЬКУЛЯТОР" : "// CALCULATOR"}
             </a>
             <a href="#vectors" className="hover:text-emerald-400 transition-colors">
-              // VECTORS
+              {lang === "ru" ? "// ПРИЧИНЫ КРАХА" : "// VECTORS"}
             </a>
             <a href="#cli" className="hover:text-emerald-400 transition-colors">
-              // CLI
+              {lang === "ru" ? "// ОФФЛАЙН CLI" : "// CLI"}
             </a>
             <a href="#pricing" className="hover:text-emerald-400 transition-colors">
-              // PRICING
+              {lang === "ru" ? "// ТАРИФЫ" : "// PRICING"}
             </a>
           </nav>
 
@@ -416,7 +401,7 @@ export default function Home() {
             {/* Status Beacon */}
             <div className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-full border border-zinc-800 bg-zinc-900/60 text-[11px] font-mono text-zinc-400">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>RADAR ONLINE</span>
+              <span>{lang === "ru" ? "РАДАР АКТИВЕН" : "RADAR ACTIVE"}</span>
             </div>
 
             {/* Language switch */}
@@ -431,47 +416,62 @@ export default function Home() {
               href="#audit-tool"
               className="px-3.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-mono font-bold text-xs uppercase tracking-wider transition shadow-sm cursor-pointer"
             >
-              {lang === "ru" ? "Аудит" : "Launch"}
+              {lang === "ru" ? "Запустить" : "Launch"}
             </a>
           </div>
         </div>
       </header>
 
-      {/* 3. HERO SECTION (Spacious, High-Impact Awwwards Stage) */}
-      <section className="relative min-h-[88vh] flex items-center justify-center px-4 sm:px-8 pt-10 pb-20 z-10 overflow-hidden">
-        {/* WebGL 3D Interactive Core Scene behind Hero */}
+      {/* 3. HERO SECTION (Spacious, Product-Focused Awwwards Stage) */}
+      <section className="relative pt-16 pb-20 px-4 sm:px-8 z-10 overflow-hidden">
+        {/* Subtle WebGL 3D wireframe mesh breathing in background */}
         <HeroScene />
 
-        <div className="max-w-6xl mx-auto w-full relative z-20 text-center flex flex-col items-center">
+        <div className="max-w-5xl mx-auto w-full relative z-20 text-center flex flex-col items-center">
           {/* Proof Badge */}
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-emerald-500/30 bg-emerald-950/20 text-xs font-mono text-emerald-300 mb-8 backdrop-blur-md shadow-[0_0_20px_rgba(16,185,129,0.15)]">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-            <span className="font-bold">⚠️ 84% CRITICAL RISK</span>
-            <span className="text-zinc-500">•</span>
+            <span className="font-bold">
+              {lang === "ru" ? "⚠️ 84% КРИТИЧЕСКИЙ РИСК" : "⚠️ 84% CRITICAL RISK"}
+            </span>
+            <span className="text-zinc-600">•</span>
             <span className="text-zinc-300">
-              {lang === "ru" ? "Средний уровень хрупкости в 1,420+ AI-репозиториях" : "Average fragility in 1,420+ AI codebases"}
+              {lang === "ru"
+                ? "Средний уровень хрупкости в 1 420+ проверенных AI-проектах"
+                : "Average fragility across 1,420+ scanned AI codebases"}
             </span>
           </div>
 
           {/* Kinetic Giant Headline */}
-          <h1 className="text-4xl sm:text-6xl md:text-7xl font-extrabold tracking-tight text-white mb-6 leading-[1.05]">
-            STOP VIBE SLOP. <br />
-            <span className="bg-gradient-to-r from-emerald-400 via-cyan-400 to-indigo-400 bg-clip-text text-transparent">
-              SHIP BULLETPROOF CODE.
-            </span>
+          <h1 className="text-3xl sm:text-5xl md:text-6xl font-extrabold tracking-tight text-white mb-6 leading-[1.1]">
+            {lang === "ru" ? (
+              <>
+                ОСТАНОВИ ВАЙБ-СПАГЕТТИ. <br />
+                <span className="bg-gradient-to-r from-emerald-400 via-cyan-400 to-indigo-400 bg-clip-text text-transparent">
+                  ВЫПУСКАЙ НАДЕЖНЫЙ ПРОДАКШН-КОД.
+                </span>
+              </>
+            ) : (
+              <>
+                STOP VIBE SLOP. <br />
+                <span className="bg-gradient-to-r from-emerald-400 via-cyan-400 to-indigo-400 bg-clip-text text-transparent">
+                  SHIP BULLETPROOF CODE.
+                </span>
+              </>
+            )}
           </h1>
 
-          <p className="max-w-2xl text-base sm:text-lg text-zinc-400 font-sans leading-relaxed mb-10">
+          <p className="max-w-2xl text-sm sm:text-base text-zinc-400 font-sans leading-relaxed mb-10">
             {lang === "ru"
-              ? "AI-аудитор для соло-фаундеров на Cursor & Lovable. Рассчитай Doomsday Score за 1 секунду, найди скрытые точки отказа и получи хирургические промпты для безопасного распила."
-              : "AI Code Auditor for solo builders on Cursor & Lovable. Compute your Doomsday Score in 1 second, locate critical fragility points, and generate surgical refactoring prompts."}
+              ? "AI-аудитор для соло-фаундеров на Cursor и Lovable. Рассчитай Doomsday Score за 1 секунду, локализуй критические точки отказа и получи хирургические промпты для безопасного распила."
+              : "AI Code Auditor for solo builders on Cursor & Lovable. Calculate your Doomsday Score in 1 second, locate critical fragility points, and generate surgical refactoring prompts."}
           </p>
 
           {/* PRIMARY DOMINANT AUDIT BAR */}
-          <div id="audit-tool" className="w-full max-w-2xl mb-6">
-            <div className="flex flex-col sm:flex-row items-stretch rounded-2xl border-2 border-emerald-500/80 bg-zinc-950/90 p-2 shadow-[0_0_50px_rgba(16,185,129,0.25)] backdrop-blur-xl gap-2">
+          <div id="audit-tool" className="w-full max-w-2xl mb-8">
+            <div className="flex flex-col sm:flex-row items-stretch rounded-2xl border-2 border-emerald-500/80 bg-zinc-950/95 p-2 shadow-[0_0_50px_rgba(16,185,129,0.25)] backdrop-blur-xl gap-2">
               <div className="flex items-center gap-3 px-3.5 flex-1">
-                <GithubIcon size={20} className="text-zinc-400 shrink-0" />
+                <GithubIcon size={18} className="text-zinc-400 shrink-0" />
                 <input
                   type="text"
                   value={githubUrl}
@@ -480,7 +480,7 @@ export default function Home() {
                     setGithubUrl(e.target.value);
                   }}
                   placeholder="https://github.com/owner/repository"
-                  className="w-full bg-transparent text-sm sm:text-base font-mono text-white placeholder-zinc-500 focus:outline-none"
+                  className="w-full bg-transparent text-xs sm:text-sm font-mono text-white placeholder-zinc-500 focus:outline-none"
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !isAuditing) runAudit();
                   }}
@@ -490,13 +490,13 @@ export default function Home() {
               <button
                 onClick={() => runAudit()}
                 disabled={isAuditing}
-                className="px-7 py-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-mono font-extrabold text-xs sm:text-sm uppercase tracking-wider transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 shrink-0 shadow-lg shadow-emerald-500/20 active:scale-95"
+                className="px-6 py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-mono font-extrabold text-xs uppercase tracking-wider transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 shrink-0 shadow-lg shadow-emerald-500/20 active:scale-95"
               >
-                <Zap size={16} className="fill-zinc-950 text-zinc-950" />
+                <Zap size={15} className="fill-zinc-950 text-zinc-950" />
                 <span>
                   {isAuditing
                     ? (lang === "ru" ? "Сканируем..." : "Scanning...")
-                    : (lang === "ru" ? "Запустить аудит за 1 сек" : "Scan Repo in 1 Sec")}
+                    : (lang === "ru" ? "Проверить репозиторий за 1 сек" : "Scan Repo in 1 Sec")}
                 </span>
               </button>
             </div>
@@ -532,45 +532,35 @@ export default function Home() {
                 }}
                 className="text-emerald-400 hover:text-emerald-300 underline underline-offset-4 cursor-pointer"
               >
-                👁️ {lang === "ru" ? "Посмотреть готовый демо-отчет" : "View Interactive Sample Report"}
+                👁️ {lang === "ru" ? "Посмотреть готовый демо-отчет" : "View Sample Report"}
               </button>
             </div>
           </div>
 
           {/* Progress / Error HUD */}
           {isAuditing && (
-            <div className="mt-4 p-4 rounded-xl border border-emerald-500/30 bg-zinc-950/80 font-mono text-xs text-emerald-400 flex items-center gap-3 animate-pulse">
+            <div className="mb-6 p-4 rounded-xl border border-emerald-500/30 bg-zinc-950/80 font-mono text-xs text-emerald-400 flex items-center gap-3 animate-pulse">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
               <span>{auditProgress}</span>
             </div>
           )}
 
           {errorMessage && (
-            <div className="mt-4 p-4 rounded-xl border border-rose-500/40 bg-rose-950/30 font-mono text-xs text-rose-300 flex items-center gap-3">
+            <div className="mb-6 p-4 rounded-xl border border-rose-500/40 bg-rose-950/30 font-mono text-xs text-rose-300 flex items-center gap-3">
               <AlertTriangle size={16} className="text-rose-400 shrink-0" />
               <span>{errorMessage}</span>
             </div>
           )}
 
-          {/* 3D Floating Asset Visual Preview */}
-          <div className="relative mt-12 w-full max-w-3xl flex justify-center">
-            <div className="relative w-64 h-64 sm:w-80 sm:h-80 animate-float pointer-events-none select-none">
-              <div className="absolute inset-0 bg-emerald-500/20 rounded-full blur-3xl opacity-40 -z-10" />
-              <Image
-                src="/hero-core.png"
-                alt="Cybernetic VibeDebt Monolith"
-                width={360}
-                height={360}
-                className="object-contain drop-shadow-[0_0_40px_rgba(16,185,129,0.3)]"
-                priority
-              />
-            </div>
+          {/* INTERACTIVE DEVELOPER PRODUCT SHOWCASE (Replaces the alien 3D cube!) */}
+          <div className="w-full mt-6">
+            <CodeShowcase lang={lang} />
           </div>
         </div>
       </section>
 
-      {/* 4. KINETIC MARQUEE TICKER */}
-      <KineticTicker />
+      {/* 4. KINETIC MARQUEE TICKER (Consistent language) */}
+      <KineticTicker lang={lang} />
 
       {/* 5. AUDIT REPORT WORKBENCH (Terminal HUD) */}
       {auditReport && (
@@ -583,10 +573,10 @@ export default function Home() {
                 <span className="w-3 h-3 rounded-full bg-amber-500 inline-block" />
                 <span className="w-3 h-3 rounded-full bg-emerald-500 inline-block" />
                 <span className="font-mono text-xs text-zinc-300 font-bold ml-2">
-                  AUDIT: {auditReport.repoName}
+                  {lang === "ru" ? "ОТЧЕТ АУДИТА:" : "AUDIT REPORT:"} {auditReport.repoName}
                 </span>
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-800 text-zinc-400">
-                  {auditReport.filesScanned} files scanned
+                  {auditReport.filesScanned} {lang === "ru" ? "файлов проверено" : "files scanned"}
                 </span>
               </div>
 
@@ -596,7 +586,7 @@ export default function Home() {
                   className="px-3 py-1.5 rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-xs font-mono text-zinc-200 transition flex items-center gap-1.5 cursor-pointer"
                 >
                   {copiedBadge ? <Check size={13} className="text-emerald-400" /> : <Share2Icon size={13} />}
-                  <span>{copiedBadge ? "Badge Copied!" : "Export Badge"}</span>
+                  <span>{copiedBadge ? (lang === "ru" ? "Бейдж скопирован!" : "Badge Copied!") : (lang === "ru" ? "Экспорт бейджа" : "Export Badge")}</span>
                 </button>
               </div>
             </div>
@@ -617,41 +607,47 @@ export default function Home() {
 
               <div className="p-4 rounded-xl border border-amber-500/20 bg-amber-500/5">
                 <div className="text-[10px] font-mono text-amber-400 uppercase tracking-wider mb-1">
-                  Critical Vulnerabilities
+                  {lang === "ru" ? "Критические уязвимости" : "Critical Vulnerabilities"}
                 </div>
                 <div className="text-3xl sm:text-4xl font-extrabold font-mono text-amber-400">
                   {auditReport.criticalBugsCount}
                 </div>
-                <div className="text-[11px] text-zinc-500 font-mono mt-1">CWE Leaks & Loops</div>
+                <div className="text-[11px] text-zinc-500 font-mono mt-1">
+                  {lang === "ru" ? "Утечки ключей и петли" : "CWE Leaks & Loops"}
+                </div>
               </div>
 
               <div className="p-4 rounded-xl border border-purple-500/20 bg-purple-500/5">
                 <div className="text-[10px] font-mono text-purple-400 uppercase tracking-wider mb-1">
-                  God Components
+                  {lang === "ru" ? "God-компоненты" : "God Components"}
                 </div>
                 <div className="text-3xl sm:text-4xl font-extrabold font-mono text-purple-400">
                   {auditReport.godComponents.length}
                 </div>
-                <div className="text-[11px] text-zinc-500 font-mono mt-1">&gt;300 LOC monoliths</div>
+                <div className="text-[11px] text-zinc-500 font-mono mt-1">
+                  {lang === "ru" ? "файлы >300 строк" : ">300 LOC monoliths"}
+                </div>
               </div>
 
               <div className="p-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5">
                 <div className="text-[10px] font-mono text-emerald-400 uppercase tracking-wider mb-1">
-                  Estimated Fix Cost
+                  {lang === "ru" ? "Оценка фикса сеньором" : "Estimated Fix Cost"}
                 </div>
                 <div className="text-3xl sm:text-4xl font-extrabold font-mono text-emerald-400">
                   ${formatNumber(auditReport.estimatedFixCost)}
                 </div>
-                <div className="text-[11px] text-zinc-500 font-mono mt-1">Senior contractor rate</div>
+                <div className="text-[11px] text-zinc-500 font-mono mt-1">
+                  {lang === "ru" ? "Ставка экстренного найма" : "Contractor emergency rate"}
+                </div>
               </div>
             </div>
 
             {/* Navigation Tabs */}
             <div className="flex border-b border-zinc-800 text-xs font-mono bg-zinc-900/40 px-6 gap-2 overflow-x-auto">
               {[
-                { id: "antipatterns", label: `Точки отказа (${auditReport.antipatterns.length})` },
-                { id: "god-files", label: `God-компоненты (${auditReport.godComponents.length})` },
-                { id: "prompts", label: `Хирургические промпты (${auditReport.refactorSteps.length})` },
+                { id: "antipatterns", label: lang === "ru" ? `Точки отказа (${auditReport.antipatterns.length})` : `Failure Points (${auditReport.antipatterns.length})` },
+                { id: "god-files", label: lang === "ru" ? `God-компоненты (${auditReport.godComponents.length})` : `God Components (${auditReport.godComponents.length})` },
+                { id: "prompts", label: lang === "ru" ? `Хирургические промпты (${auditReport.refactorSteps.length})` : `Surgical Prompts (${auditReport.refactorSteps.length})` },
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -707,7 +703,7 @@ export default function Home() {
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 text-xs font-mono">
                         <div className="rounded-lg bg-zinc-950 p-3.5 border border-rose-500/20">
                           <div className="text-rose-400 font-semibold mb-2 flex items-center gap-1.5">
-                            <span>✖</span> <span>Текущий небезопасный код:</span>
+                            <span>✖</span> <span>{lang === "ru" ? "Текущий небезопасный код:" : "Current Vulnerable Code:"}</span>
                           </div>
                           <pre className="text-zinc-300 overflow-x-auto text-[11px] leading-relaxed">
                             {item.sampleBadCode}
@@ -716,7 +712,7 @@ export default function Home() {
 
                         <div className="rounded-lg bg-zinc-950 p-3.5 border border-emerald-500/20">
                           <div className="text-emerald-400 font-semibold mb-2 flex items-center gap-1.5">
-                            <span>✓</span> <span>Хирургическое исправление:</span>
+                            <span>✓</span> <span>{lang === "ru" ? "Хирургическое исправление:" : "Surgical Fix:"}</span>
                           </div>
                           <pre className="text-zinc-300 overflow-x-auto text-[11px] leading-relaxed">
                             {item.sampleFix}
@@ -760,7 +756,7 @@ export default function Home() {
                         onClick={() => setActiveReportTab("prompts")}
                         className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-mono text-zinc-200 transition shrink-0 cursor-pointer"
                       >
-                        Получить промпт распила →
+                        {lang === "ru" ? "Получить промпт распила →" : "Get Decouple Prompt →"}
                       </button>
                     </div>
                   ))}
@@ -772,7 +768,7 @@ export default function Home() {
                 <div className="space-y-6">
                   <div className="flex items-center justify-between bg-zinc-900/50 p-3 rounded-xl border border-zinc-800">
                     <span className="text-xs font-mono text-zinc-400">
-                      Промпты оптимизированы для:
+                      {lang === "ru" ? "Промпты оптимизированы для:" : "Prompts formatted for:"}
                     </span>
                     <div className="flex gap-2">
                       <button
@@ -817,7 +813,7 @@ export default function Home() {
                           className="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-mono font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
                         >
                           {copiedPromptIdx === idx ? <Check size={13} /> : <Copy size={13} />}
-                          <span>{copiedPromptIdx === idx ? "Скопировано!" : "Копировать"}</span>
+                          <span>{copiedPromptIdx === idx ? (lang === "ru" ? "Скопировано!" : "Copied!") : (lang === "ru" ? "Копировать" : "Copy")}</span>
                         </button>
                       </div>
 
@@ -838,10 +834,10 @@ export default function Home() {
         <div className="text-center max-w-2xl mx-auto mb-16">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-zinc-800 bg-zinc-900/80 text-zinc-300 text-xs font-mono mb-4">
             <Clock size={13} className="text-amber-400" />
-            <span>HEURISTIC RISK ENGINE</span>
+            <span>{lang === "ru" ? "⚡ ЭВРИСТИЧЕСКИЙ РАСЧЕТ РИСКА" : "⚡ HEURISTIC RISK ENGINE"}</span>
           </div>
           <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight mb-3">
-            {lang === "ru" ? "Калькулятор технического краха" : "Doomsday Collapse Calculator"}
+            {lang === "ru" ? "Калькулятор технического краха (Doomsday Score)" : "Doomsday Collapse Calculator"}
           </h2>
           <p className="text-zinc-400 text-sm font-sans">
             {lang === "ru"
@@ -858,7 +854,7 @@ export default function Home() {
               <div>
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-xs font-mono text-zinc-300">
-                    Объем кода, сгенерированного ИИ:
+                    {lang === "ru" ? "Объем кода, сгенерированного ИИ:" : "AI-generated code volume:"}
                   </span>
                   <span className="text-xs font-mono font-bold text-emerald-400">
                     {formatNumber(calcAiLines)} LOC
@@ -874,6 +870,9 @@ export default function Home() {
                   className="w-full accent-emerald-400 bg-zinc-800 cursor-pointer"
                 />
                 <div className="flex items-center gap-1.5 pt-2">
+                  <span className="text-[10px] font-mono text-zinc-500 mr-1">
+                    {lang === "ru" ? "Быстрый выбор:" : "Quick select:"}
+                  </span>
                   {[1000, 3000, 5500, 10000, 20000].map((v) => (
                     <button
                       key={v}
@@ -894,10 +893,10 @@ export default function Home() {
               <div>
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-xs font-mono text-zinc-300">
-                    God-компоненты (&gt;300 строк в одном файле):
+                    {lang === "ru" ? "God-компоненты (>300 строк в одном файле):" : "God-components (>300 lines in single file):"}
                   </span>
                   <span className="text-xs font-mono font-bold text-rose-400">
-                    {calcGodFiles} файлов
+                    {calcGodFiles} {lang === "ru" ? "файлов" : "files"}
                   </span>
                 </div>
                 <input
@@ -909,6 +908,9 @@ export default function Home() {
                   className="w-full accent-rose-400 bg-zinc-800 cursor-pointer"
                 />
                 <div className="flex items-center gap-1.5 pt-2">
+                  <span className="text-[10px] font-mono text-zinc-500 mr-1">
+                    {lang === "ru" ? "Файлов:" : "Files:"}
+                  </span>
                   {[0, 1, 3, 5, 8].map((v) => (
                     <button
                       key={v}
@@ -928,7 +930,9 @@ export default function Home() {
               {/* TOGGLES */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
                 <div className="p-4 rounded-xl border border-zinc-800 bg-zinc-900/40">
-                  <div className="text-xs font-mono text-zinc-300 mb-2">Покрытие автотестами:</div>
+                  <div className="text-xs font-mono text-zinc-300 mb-2">
+                    {lang === "ru" ? "Покрытие автотестами:" : "Test coverage:"}
+                  </div>
                   <div className="flex gap-2">
                     <button
                       onClick={() => setCalcHasTests(false)}
@@ -938,7 +942,7 @@ export default function Home() {
                           : "bg-zinc-800 text-zinc-400"
                       }`}
                     >
-                      0% (Vibe-код)
+                      {lang === "ru" ? "0% (Чистый вайб)" : "0% (Vibe code)"}
                     </button>
                     <button
                       onClick={() => setCalcHasTests(true)}
@@ -948,18 +952,20 @@ export default function Home() {
                           : "bg-zinc-800 text-zinc-400"
                       }`}
                     >
-                      Есть тесты
+                      {lang === "ru" ? "Есть автотесты" : "Has tests"}
                     </button>
                   </div>
                 </div>
 
                 <div className="p-4 rounded-xl border border-zinc-800 bg-zinc-900/40">
-                  <div className="text-xs font-mono text-zinc-300 mb-2">Схема БД / Supabase:</div>
+                  <div className="text-xs font-mono text-zinc-300 mb-2">
+                    {lang === "ru" ? "Схема БД / Supabase:" : "DB Schema / Supabase:"}
+                  </div>
                   <div className="flex gap-1.5">
                     {[
-                      { id: "clean", label: "RLS & Schema" },
-                      { id: "medium", label: "Basic" },
-                      { id: "mess", label: "No RLS" },
+                      { id: "clean", label: lang === "ru" ? "RLS и схема" : "RLS Clean" },
+                      { id: "medium", label: lang === "ru" ? "Базовая" : "Basic" },
+                      { id: "mess", label: lang === "ru" ? "Без RLS" : "No RLS" },
                     ].map((st) => (
                       <button
                         key={st.id}
@@ -996,7 +1002,7 @@ export default function Home() {
                 className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-mono font-bold text-xs uppercase tracking-wider rounded-lg transition cursor-pointer shrink-0 flex items-center justify-center gap-1.5 shadow-md"
               >
                 <Zap size={14} className="fill-zinc-950 text-zinc-950" />
-                <span>Найти точки отказа →</span>
+                <span>{lang === "ru" ? "Найти точки отказа →" : "Scan failure points →"}</span>
               </button>
             </div>
           </TiltCard>
@@ -1010,6 +1016,7 @@ export default function Home() {
               fragilityPercent={calcResult.fragilityPercent}
               daysToDisaster={calcResult.days}
               emergencyCost={calcResult.emergencyCost}
+              lang={lang}
             />
           </TiltCard>
         </div>
@@ -1020,14 +1027,14 @@ export default function Home() {
         <div className="text-center max-w-2xl mx-auto mb-16">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-zinc-800 bg-zinc-900/80 text-zinc-300 text-xs font-mono mb-4">
             <ShieldAlert size={13} className="text-rose-400" />
-            <span>VULNERABILITY SURFACE</span>
+            <span>{lang === "ru" ? "🛡️ АНАТОМИЯ ОТКАЗОВ ИИ-КОДА" : "🛡️ VULNERABILITY SURFACE"}</span>
           </div>
           <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight mb-3">
-            {lang === "ru" ? "4 вектора деградации ИИ-кода" : "4 Primary AI Failure Vectors"}
+            {lang === "ru" ? "4 главных вектора деградации кода" : "4 Primary AI Failure Vectors"}
           </h2>
           <p className="text-zinc-400 text-sm font-sans">
             {lang === "ru"
-              ? "Почему даже самые умные модели (Claude 3.7 / GPT-4o) порождают критический технический долг."
+              ? "Почему даже сильные модели (Claude 3.7 / GPT-4o) неизбежно разрушают архитектуру без контроля."
               : "Why advanced LLMs inevitably produce brittle production spaghetti without architectural guardrails."}
           </p>
         </div>
@@ -1037,18 +1044,23 @@ export default function Home() {
           <TiltCard className="p-6 sm:p-8">
             <div className="flex items-center justify-between mb-4">
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20 font-bold uppercase">
-                01 // MONOLITHS
+                {lang === "ru" ? "01 // МОНОЛИТЫ (>300 СТРОК)" : "01 // MONOLITHS (>300 LOC)"}
               </span>
-              <span className="text-xs font-mono text-zinc-500">Context Loss</span>
+              <span className="text-xs font-mono text-zinc-500">{lang === "ru" ? "Потеря контекста" : "Context Loss"}</span>
             </div>
             <h3 className="text-lg font-bold text-white mb-2">
-              God-компоненты (&gt;300 строк)
+              {lang === "ru" ? "God-компоненты и спагетти-файлы" : "God-components & Spaghetti Files"}
             </h3>
             <p className="text-xs sm:text-sm text-zinc-400 font-sans leading-relaxed mb-6">
-              Когда файл перерастает 300 строк, Cursor теряет структурный контекст. Добавление новой кнопки незаметно стирает существующую валидацию или ломает соседний хук.
+              {lang === "ru"
+                ? "Когда файл перерастает 300 строк, Cursor теряет структурный контекст. Добавление новой кнопки незаметно стирает существующую валидацию или ломает соседний хук."
+                : "When a file exceeds 300 LOC, LLM context degrades. Prompting a new UI feature silently strips validation logic or breaks state."}
             </p>
             <div className="text-xs font-mono text-emerald-400 bg-emerald-950/20 border border-emerald-500/20 p-3 rounded-lg">
-              🛡️ <strong>Решение VibeDebt:</strong> Автоматический распил на 3 изолированных сервиса без потери стейта.
+              🛡️ <strong>{lang === "ru" ? "Решение VibeDebt:" : "VibeDebt Fix:"}</strong>{" "}
+              {lang === "ru"
+                ? "Автоматический распил на 3 изолированных сервиса без потери стейта."
+                : "Automated decoupling into 3 isolated modules preserving state."}
             </div>
           </TiltCard>
 
@@ -1056,18 +1068,23 @@ export default function Home() {
           <TiltCard className="p-6 sm:p-8">
             <div className="flex items-center justify-between mb-4">
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-bold uppercase">
-                02 // SUPPLY CHAIN
+                {lang === "ru" ? "02 // ФАНТОМНЫЕ ПАКЕТЫ (19.7%)" : "02 // PHANTOM PACKAGES (19.7%)"}
               </span>
-              <span className="text-xs font-mono text-zinc-500">Phantom Packages</span>
+              <span className="text-xs font-mono text-zinc-500">{lang === "ru" ? "Цепочка поставок" : "Supply Chain"}</span>
             </div>
             <h3 className="text-lg font-bold text-white mb-2">
-              Галлюцинации npm-библиотек (19.7%)
+              {lang === "ru" ? "Галлюцинации библиотек в npm" : "Hallucinated npm Packages"}
             </h3>
             <p className="text-xs sm:text-sm text-zinc-400 font-sans leading-relaxed mb-6">
-              До 19.7% рекомендуемых ИИ зависимостей не существуют в официальном реестре. Хакеры массово регистрируют фантомные имена пакетов для внедрения стилеров в стартапы.
+              {lang === "ru"
+                ? "До 19.7% рекомендуемых ИИ зависимостей не существуют в официальном реестре. Хакеры массово регистрируют фантомные имена пакетов для внедрения стилеров в стартапы."
+                : "Up to 19.7% of AI-recommended dependencies are hallucinated. Attackers claim these names on npm to inject malicious payloads."}
             </p>
             <div className="text-xs font-mono text-amber-400 bg-amber-950/20 border border-amber-500/20 p-3 rounded-lg">
-              🛡️ <strong>Решение VibeDebt:</strong> Верификация package.json и лок-файлов на валидность реестра.
+              🛡️ <strong>{lang === "ru" ? "Решение VibeDebt:" : "VibeDebt Fix:"}</strong>{" "}
+              {lang === "ru"
+                ? "Верификация package.json и лок-файлов на валидность реестра."
+                : "Lockfile and registry verification for all imported modules."}
             </div>
           </TiltCard>
 
@@ -1075,18 +1092,23 @@ export default function Home() {
           <TiltCard className="p-6 sm:p-8">
             <div className="flex items-center justify-between mb-4">
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20 font-bold uppercase">
-                03 // SECRETS EXPOSURE
+                {lang === "ru" ? "03 // УТЕЧКА КЛЮЧЕЙ В БРАУЗЕР" : "03 // CLIENT SECRETS LEAK"}
               </span>
               <span className="text-xs font-mono text-zinc-500">CWE-798</span>
             </div>
             <h3 className="text-lg font-bold text-white mb-2">
-              Утечки токенов в клиентский бандл
+              {lang === "ru" ? "Приватные токены в 'use client'" : "Master Tokens in Client Bundles"}
             </h3>
             <p className="text-xs sm:text-sm text-zinc-400 font-sans leading-relaxed mb-6">
-              Пытаясь обойти ошибки прав доступа, ИИ импортирует `SUPABASE_SERVICE_ROLE_KEY` прямо в компоненты с директивой &apos;use client&apos;, открывая master-доступ к базе данных в DevTools браузера.
+              {lang === "ru"
+                ? "Пытаясь обойти ошибки прав доступа, ИИ импортирует SUPABASE_SERVICE_ROLE_KEY прямо в клиентские компоненты, открывая master-доступ к базе данных в DevTools браузера."
+                : "Trying to bypass RLS errors, AI models import SUPABASE_SERVICE_ROLE_KEY directly into client components, exposing master credentials."}
             </p>
             <div className="text-xs font-mono text-purple-400 bg-purple-950/20 border border-purple-500/20 p-3 rounded-lg">
-              🛡️ <strong>Решение VibeDebt:</strong> Мгновенный перенос приватных ключей в изолированные Server Actions.
+              🛡️ <strong>{lang === "ru" ? "Решение VibeDebt:" : "VibeDebt Fix:"}</strong>{" "}
+              {lang === "ru"
+                ? "Мгновенная изоляция в защищенные Server Actions."
+                : "Instant migration to isolated server actions."}
             </div>
           </TiltCard>
 
@@ -1094,18 +1116,23 @@ export default function Home() {
           <TiltCard className="p-6 sm:p-8">
             <div className="flex items-center justify-between mb-4">
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 font-bold uppercase">
-                04 // TESTING GAP
+                {lang === "ru" ? "04 // СЛЕПАЯ ЗОНА ТЕСТИРОВАНИЯ" : "04 // TESTING GAP"}
               </span>
-              <span className="text-xs font-mono text-zinc-500">Zero Regression</span>
+              <span className="text-xs font-mono text-zinc-500">{lang === "ru" ? "Регрессии" : "Zero Regression"}</span>
             </div>
             <h3 className="text-lg font-bold text-white mb-2">
-              Слепая зона отсутствия тестов
+              {lang === "ru" ? "0% защиты от тихих поломок" : "Zero Regression Protection"}
             </h3>
             <p className="text-xs sm:text-sm text-zinc-400 font-sans leading-relaxed mb-6">
-              Нейросеть генерирует работающий интерфейс, но оставляет 0 автотестов на граничные случаи. Любая следующая итерация в Cursor несет 90% риск поломки авторизации или биллинга.
+              {lang === "ru"
+                ? "Нейросеть генерирует работающий интерфейс, но оставляет 0 автотестов на граничные случаи. Любая следующая итерация в Cursor несет 90% риск поломки авторизации или биллинга."
+                : "LLMs craft UI quickly but omit edge-case tests. Any subsequent refactor prompt carries a 90% probability of breaking auth or stripe."}
             </p>
             <div className="text-xs font-mono text-blue-400 bg-blue-950/20 border border-blue-500/20 p-3 rounded-lg">
-              🛡️ <strong>Решение VibeDebt:</strong> Автогенерация Vitest-сьютов на 4 сценария: valid, empty, wrong type, limits.
+              🛡️ <strong>{lang === "ru" ? "Решение VibeDebt:" : "VibeDebt Fix:"}</strong>{" "}
+              {lang === "ru"
+                ? "Автогенерация Vitest-сьютов на 4 сценария: valid, empty, wrong type, limits."
+                : "Automated Vitest harness generation across 4 edge scenarios."}
             </div>
           </TiltCard>
         </div>
@@ -1116,14 +1143,14 @@ export default function Home() {
         <div className="max-w-4xl mx-auto text-center mb-10">
           <div className="inline-flex items-center gap-1.5 text-xs font-mono text-emerald-400 px-3 py-1 rounded-full border border-emerald-500/20 bg-emerald-500/5 mb-3">
             <Terminal size={13} />
-            <span>LOCAL TERMINAL AUDIT</span>
+            <span>{lang === "ru" ? "💻 ОФФЛАЙН CLI-АУДИТ" : "💻 OFFLINE CLI AUDIT"}</span>
           </div>
           <h2 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight mb-2">
-            {lang === "ru" ? "Приватный код? Запусти аудит локально" : "Private Codebase? Run Audit Locally"}
+            {lang === "ru" ? "Приватный код? Запусти аудит локально за 1 секунду" : "Private Codebase? Run Audit Locally in 1 Second"}
           </h2>
           <p className="text-zinc-400 text-xs sm:text-sm font-sans max-w-xl mx-auto">
             {lang === "ru"
-              ? "Для закрытых коммерческих репозиториев и NDA-проектов. Исходный код анализируется на вашей машине и никогда не покидает RAM."
+              ? "Для закрытых коммерческих репозиториев и NDA-проектов. Исходный код анализируется через AST прямо на вашей машине и никогда не покидает RAM."
               : "For enterprise code and proprietary repos. 100% offline AST analysis. Zero code ever leaves your machine."}
           </p>
         </div>
@@ -1141,7 +1168,7 @@ export default function Home() {
               className="px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[11px] text-zinc-200 transition flex items-center gap-1.5 cursor-pointer"
             >
               {copiedCli ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
-              <span>{copiedCli ? "Copied!" : "Copy"}</span>
+              <span>{copiedCli ? (lang === "ru" ? "Скопировано!" : "Copied!") : (lang === "ru" ? "Копировать" : "Copy")}</span>
             </button>
           </div>
           <div className="p-5 font-mono text-xs text-zinc-300 space-y-2 bg-zinc-950 leading-relaxed overflow-x-auto">
@@ -1149,12 +1176,12 @@ export default function Home() {
               <span>$</span>
               <span className="text-white">npx vibedebt audit ./src</span>
             </div>
-            <div className="text-zinc-500 text-[11px]">→ Running offline AST parser &amp; dependency checker...</div>
-            <div className="text-emerald-400 text-[11px]">✔ 48 files scanned in 290ms • 0 bytes sent over network</div>
-            <div className="text-amber-400 text-[11px]">⚠ 2 God-files identified: src/pages/Dashboard.tsx (620 LOC)</div>
-            <div className="text-rose-400 text-[11px]">✖ 1 Hardcoded secret pattern found in src/lib/supabase.ts</div>
+            <div className="text-zinc-500 text-[11px]">{lang === "ru" ? "→ Запуск оффлайн AST-парсера и проверки зависимостей..." : "→ Running offline AST parser & dependency checker..."}</div>
+            <div className="text-emerald-400 text-[11px]">{lang === "ru" ? "✔ 48 файлов проверено за 290мс • 0 байт отправлено в сеть" : "✔ 48 files scanned in 290ms • 0 bytes sent over network"}</div>
+            <div className="text-amber-400 text-[11px]">{lang === "ru" ? "⚠ Обнаружено 2 God-файла: src/pages/Dashboard.tsx (620 LOC)" : "⚠ 2 God-files identified: src/pages/Dashboard.tsx (620 LOC)"}</div>
+            <div className="text-rose-400 text-[11px]">{lang === "ru" ? "✖ 1 утечка токена обнаружена в src/lib/supabase.ts" : "✖ 1 Hardcoded secret pattern found in src/lib/supabase.ts"}</div>
             <div className="text-emerald-300 text-[11px] pt-1 border-t border-zinc-800/60">
-              ✨ 3 surgical Cursor prompts written to <span className="underline">.vibedebt/prompts.md</span>
+              ✨ {lang === "ru" ? "3 хирургических промпта сохранены в" : "3 surgical Cursor prompts written to"} <span className="underline">.vibedebt/prompts.md</span>
             </div>
           </div>
         </div>
@@ -1162,15 +1189,15 @@ export default function Home() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-2xl mx-auto text-xs font-mono text-zinc-400">
           <div className="p-3 rounded-xl border border-zinc-800 bg-zinc-900/30 flex items-center gap-2">
             <span className="text-emerald-400">✓</span>
-            <span>100% Offline AST</span>
+            <span>{lang === "ru" ? "100% Оффлайн AST" : "100% Offline AST"}</span>
           </div>
           <div className="p-3 rounded-xl border border-zinc-800 bg-zinc-900/30 flex items-center gap-2">
             <span className="text-emerald-400">✓</span>
-            <span>Zero API Tokens Needed</span>
+            <span>{lang === "ru" ? "Без API-токенов и регистрации" : "Zero API Tokens Needed"}</span>
           </div>
           <div className="p-3 rounded-xl border border-zinc-800 bg-zinc-900/30 flex items-center gap-2">
             <span className="text-emerald-400">✓</span>
-            <span>Outputs Cursor Markdown</span>
+            <span>{lang === "ru" ? "Выгрузка Markdown для Cursor" : "Outputs Cursor Markdown"}</span>
           </div>
         </div>
       </section>
@@ -1179,14 +1206,14 @@ export default function Home() {
       <section id="pricing" className="py-24 px-4 sm:px-8 max-w-5xl mx-auto z-10 relative">
         <div className="text-center max-w-2xl mx-auto mb-16">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-zinc-800 bg-zinc-900 text-zinc-300 text-xs font-mono mb-4">
-            <span>TRANSPARENT VALUE</span>
+            <span>{lang === "ru" ? "💳 ПРОЗРАЧНЫЙ ДОСТУП" : "💳 TRANSPARENT VALUE"}</span>
           </div>
           <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight mb-2">
-            {lang === "ru" ? "Честная модель без подписок-ловушек" : "Simple, Transparent Pricing"}
+            {lang === "ru" ? "Честные условия без скрытых платежей" : "Simple, Transparent Pricing"}
           </h2>
           <p className="text-zinc-400 text-xs sm:text-sm font-sans">
             {lang === "ru"
-              ? "Бесплатный базовый экспресс-аудит для каждого фаундера. Никаких скрытых платежей."
+              ? "Бесплатный экспресс-аудит для каждого фаундера. Без привязки карт."
               : "Free baseline audits for every builder. Zero bait-and-switch."}
           </p>
         </div>
@@ -1196,31 +1223,35 @@ export default function Home() {
           <TiltCard className="p-8 flex flex-col justify-between">
             <div>
               <div className="text-xs font-mono text-zinc-400 uppercase tracking-widest mb-1">
-                SOLO BUILDER
+                {lang === "ru" ? "СОЛО-ФАУНДЕР" : "SOLO BUILDER"}
               </div>
               <div className="flex items-baseline gap-1 mb-4">
                 <span className="text-4xl font-extrabold font-mono text-white">$0</span>
-                <span className="text-xs font-mono text-zinc-500">/ forever free</span>
+                <span className="text-xs font-mono text-zinc-500">
+                  {lang === "ru" ? "/ навсегда бесплатно" : "/ forever free"}
+                </span>
               </div>
               <p className="text-xs text-zinc-400 font-sans mb-6">
-                Идеально для проверки публичных репозиториев и мгновенного расчета Doomsday Score.
+                {lang === "ru"
+                  ? "Идеально для проверки публичных репозиториев и мгновенного расчета Doomsday Score."
+                  : "Perfect for public repositories and instant Doomsday Score inspection."}
               </p>
               <ul className="text-xs font-mono text-zinc-300 space-y-3 mb-8">
                 <li className="flex items-center gap-2">
                   <span className="text-emerald-400">✓</span>
-                  <span>Безлимитный аудит публичных репозиториев</span>
+                  <span>{lang === "ru" ? "Безлимитный аудит публичных репозиториев" : "Unlimited public repository scans"}</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <span className="text-emerald-400">✓</span>
-                  <span>Детектор God-компонентов (&gt;300 LOC)</span>
+                  <span>{lang === "ru" ? "Детектор God-компонентов (>300 строк)" : "God-component detection (>300 LOC)"}</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <span className="text-emerald-400">✓</span>
-                  <span>Хирургические промпты для Cursor &amp; Claude</span>
+                  <span>{lang === "ru" ? "Хирургические промпты для Cursor & Claude" : "Surgical prompts for Cursor & Claude"}</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <span className="text-emerald-400">✓</span>
-                  <span>README Doomsday Badge экспортер</span>
+                  <span>{lang === "ru" ? "README Doomsday Badge экспортер" : "README Doomsday Badge exporter"}</span>
                 </li>
               </ul>
             </div>
@@ -1228,7 +1259,7 @@ export default function Home() {
               href="#audit-tool"
               className="w-full py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-mono font-bold text-xs uppercase tracking-wider text-center transition cursor-pointer"
             >
-              Запустить аудит бесплатно
+              {lang === "ru" ? "Запустить аудит бесплатно" : "Start Free Audit"}
             </a>
           </TiltCard>
 
@@ -1240,7 +1271,7 @@ export default function Home() {
             <div>
               <div className="flex items-center justify-between mb-1">
                 <span className="text-xs font-mono text-emerald-400 uppercase tracking-widest font-bold">
-                  FOUNDER PRO
+                  {lang === "ru" ? "ДЛЯ РАСТУЩИХ ПРОДУКТОВ" : "FOUNDER PRO"}
                 </span>
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                   POPULAR
@@ -1248,27 +1279,31 @@ export default function Home() {
               </div>
               <div className="flex items-baseline gap-1 mb-4">
                 <span className="text-4xl font-extrabold font-mono text-white">$19</span>
-                <span className="text-xs font-mono text-zinc-400">/ month</span>
+                <span className="text-xs font-mono text-zinc-400">
+                  {lang === "ru" ? "/ месяц" : "/ month"}
+                </span>
               </div>
               <p className="text-xs text-zinc-300 font-sans mb-6">
-                Полная автоматизация аудита приватных репозиториев и защита перед продакшн-релизом.
+                {lang === "ru"
+                  ? "Полная автоматизация аудита приватных репозиториев и защита перед продакшн-релизом."
+                  : "Continuous automation for private repositories and pre-production guardrails."}
               </p>
               <ul className="text-xs font-mono text-zinc-200 space-y-3 mb-8">
                 <li className="flex items-center gap-2">
                   <span className="text-emerald-400">✓</span>
-                  <span>Лицензия на приватный Offline CLI</span>
+                  <span>{lang === "ru" ? "Лицензия на приватный Offline CLI" : "Private Offline CLI license"}</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <span className="text-emerald-400">✓</span>
-                  <span>GitHub PR Bot (авторефакторинг пулл-реквестов)</span>
+                  <span>{lang === "ru" ? "GitHub PR Bot (авторефакторинг пулл-реквестов)" : "GitHub PR Bot (automated refactor PRs)"}</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <span className="text-emerald-400">✓</span>
-                  <span>Приоритетный парсер многофайловых монорепозиториев</span>
+                  <span>{lang === "ru" ? "Приоритетный парсер многофайловых репозиториев" : "Priority parser for monorepos"}</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <span className="text-emerald-400">✓</span>
-                  <span>Прямой саппорт от архитектора</span>
+                  <span>{lang === "ru" ? "Прямой саппорт от архитектора" : "Direct founder-level support"}</span>
                 </li>
               </ul>
             </div>
@@ -1282,7 +1317,7 @@ export default function Home() {
               }}
               className="w-full py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-mono font-bold text-xs uppercase tracking-wider text-center transition cursor-pointer shadow-lg shadow-emerald-500/20"
             >
-              Подключить Founder Pro →
+              {lang === "ru" ? "Подключить Founder Pro →" : "Upgrade to Founder Pro →"}
             </button>
           </TiltCard>
         </div>
@@ -1294,7 +1329,7 @@ export default function Home() {
           <div className="flex items-center gap-2">
             <span className="text-emerald-400 font-bold">VIBEDEBT</span>
             <span>//</span>
-            <span>Zero Slop Architecture</span>
+            <span>{lang === "ru" ? "Архитектура без спагетти" : "Zero Slop Architecture"}</span>
           </div>
 
           <div className="flex items-center gap-6">

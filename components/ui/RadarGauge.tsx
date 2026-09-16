@@ -6,6 +6,7 @@ interface RadarGaugeProps {
   fragilityPercent: number;
   daysToDisaster: number;
   emergencyCost: number;
+  lang?: "ru" | "en";
   className?: string;
 }
 
@@ -13,12 +14,12 @@ export default function RadarGauge({
   fragilityPercent,
   daysToDisaster,
   emergencyCost,
+  lang = "ru",
   className = "",
 }: RadarGaugeProps) {
   // SVG circular arc calculation
   const radius = 72;
   const circumference = 2 * Math.PI * radius;
-  // We use 270 degree arc
   const arcLength = circumference * 0.75;
   const strokeDashoffset = arcLength - (arcLength * Math.min(fragilityPercent, 100)) / 100;
 
@@ -31,7 +32,18 @@ export default function RadarGauge({
     ? "#f59e0b" // amber-500
     : "#10b981"; // emerald-500
 
-  const statusText = isCritical ? "CRITICAL RISK" : isWarning ? "ELEVATED DEBT" : "STABLE VELOCITY";
+  const statusText =
+    lang === "ru"
+      ? isCritical
+        ? "КРИТИЧЕСКИЙ РИСК"
+        : isWarning
+        ? "ПОВЫШЕННЫЙ ДОЛГ"
+        : "СТАБИЛЬНЫЙ КОД"
+      : isCritical
+      ? "CRITICAL RISK"
+      : isWarning
+      ? "ELEVATED DEBT"
+      : "STABLE VELOCITY";
 
   return (
     <div className={`relative flex flex-col items-center justify-center p-6 ${className}`}>
@@ -95,7 +107,7 @@ export default function RadarGauge({
 
         {/* Central HUD Data */}
         <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-          <div className="flex items-center gap-1 text-[10px] font-mono tracking-widest text-zinc-500 mb-1">
+          <div className="flex items-center gap-1.5 text-[10px] font-mono tracking-widest text-zinc-400 mb-1">
             <span
               className="w-1.5 h-1.5 rounded-full animate-ping"
               style={{ backgroundColor: statusColor }}
@@ -109,12 +121,12 @@ export default function RadarGauge({
           </div>
 
           <div className="text-[11px] font-mono text-zinc-400 mt-1">
-            TTD:{" "}
+            {lang === "ru" ? "Отказ: " : "TTD: "}
             <span
               className="font-bold underline decoration-zinc-700 underline-offset-2"
               style={{ color: statusColor }}
             >
-              {daysToDisaster} DAYS
+              {daysToDisaster} {lang === "ru" ? "дней" : "DAYS"}
             </span>
           </div>
         </div>
@@ -123,11 +135,17 @@ export default function RadarGauge({
       {/* Metric pills under radar */}
       <div className="grid grid-cols-2 gap-3 w-full mt-4 text-xs font-mono">
         <div className="p-2.5 rounded-lg border border-zinc-800/80 bg-zinc-900/40 text-center">
-          <div className="text-[10px] text-zinc-500 uppercase">Срок до сбоя</div>
-          <div className="text-sm font-bold text-white mt-0.5">{daysToDisaster} дней</div>
+          <div className="text-[10px] text-zinc-500 uppercase">
+            {lang === "ru" ? "Срок до сбоя" : "Horizon"}
+          </div>
+          <div className="text-sm font-bold text-white mt-0.5">
+            {daysToDisaster} {lang === "ru" ? "дн." : "days"}
+          </div>
         </div>
         <div className="p-2.5 rounded-lg border border-zinc-800/80 bg-zinc-900/40 text-center">
-          <div className="text-[10px] text-zinc-500 uppercase">Экстренный фикс</div>
+          <div className="text-[10px] text-zinc-500 uppercase">
+            {lang === "ru" ? "Экстренный фикс" : "Contractor rate"}
+          </div>
           <div className="text-sm font-bold text-emerald-400 mt-0.5">
             ${emergencyCost.toLocaleString()}
           </div>
