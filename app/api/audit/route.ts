@@ -22,6 +22,7 @@ interface RefactorStep {
   title: string;
   prompt: string;
   estimatedTime: string;
+  targetTool?: string;
 }
 
 interface AuditReport {
@@ -119,7 +120,6 @@ export async function POST(req: Request) {
       }
 
       if (repoRes.status === 403) {
-        const rateLimitReset = repoRes.headers.get("x-ratelimit-reset");
         return NextResponse.json(
           {
             error: "Превышен лимит запросов к GitHub API без токена. Используйте режим анализа фрагмента кода или выберите один из тестовых архетипов.",
@@ -281,7 +281,6 @@ export async function POST(req: Request) {
       if (secretMatches > 0) baseScore += 15;
       if (codeFiles.length > 50 && !hasTests) baseScore += 10;
       if (repoData.stargazers_count > 500 && hasTests) {
-        // High quality mature open source project
         baseScore = Math.max(15, baseScore - 50);
       }
 
@@ -347,23 +346,62 @@ export async function POST(req: Request) {
         });
       }
 
-      // Generate customized surgical prompts
+      // DYNAMIC SURGICAL REFACTOR PROMPTS (KEY LEAD MAGNET)
       const mainFile = topLargest[0]?.path || "app/page.tsx";
+      const mainFileLines = Math.round((topLargest[0]?.size || 40000) / 38);
+      const cleanBaseName = mainFile.split("/").pop()?.replace(/\.[^/.]+$/, "") || "component";
+      const targetSubfolder = `/components/${cleanBaseName}`;
+
       const refactorSteps: RefactorStep[] = [
         {
           step: 1,
-          title: `Декомпозиция крупнейшего файла ${mainFile}`,
-          estimatedTime: "20 минут",
-          prompt: `Ты — Senior Software Architect. В моем репозитории ${owner}/${repo} файл '${mainFile}' перегружен логикой.
-Задача: раздели его на 3 изолированных суб-компонента по принципу единой ответственности.
-Требования: НЕ изменяй текущий функционал, сохрани все пропсы, напиши строгие интерфейсы TypeScript без 'any'. Выведи код новых файлов с путями.`,
+          title: `Хирургический распил God-компонента ${mainFile}`,
+          estimatedTime: "15-20 минут",
+          targetTool: "Cursor Composer / Claude 3.7",
+          prompt: `Ты — Senior Refactoring Agent в Cursor / Claude 3.7.
+Твоя цель: безопасно разбить God-компонент '${mainFile}' (~${mainFileLines} строк кода) на модульные подкомпоненты внутри папки '${targetSubfolder}', сохранив все стейты, хуки, пропсы и стили без малейших визуальных или логических изменений.
+
+Строгие правила безопасного рефакторинга:
+1. НЕ сокращай код через комментарии вроде '// rest of code stays here'. Выведи полный, готовый к запуску код.
+2. Сохрани '${mainFile}' как чистый оркестратор не длиннее 120 строк.
+3. Вынеси UI-секции в отдельные файлы внутри '${targetSubfolder}/':
+   - '${targetSubfolder}/Header.tsx'
+   - '${targetSubfolder}/MainView.tsx'
+   - '${targetSubfolder}/Modals.tsx'
+4. Все стейты и методы передай через пропсы или создай кастомный хук '${targetSubfolder}/use${cleanBaseName.charAt(0).toUpperCase() + cleanBaseName.slice(1)}State.ts'.
+5. Напиши строгие TypeScript interfaces без использования 'any'.`,
         },
         {
           step: 2,
-          title: hasTests ? "Добавление регрессионных тестов" : "Внедрение первого тестового контура",
+          title: secretMatches > 0 ? "Изоляция секретных ключей в Server Actions" : "Очистка от 'as any' и валидация Zod",
+          estimatedTime: "10 минут",
+          targetTool: "Cursor Cmd+K",
+          prompt: secretMatches > 0
+            ? `Ты — Senior Security Engineer в Cursor.
+В файле '${sampledFilePath || mainFile}' обнаружено небезопасное использование секретных переменных (API keys / service role).
+Задача: перенеси приватные операции с базой и ключами из клиентского бандла в безопасный Server Action в 'app/actions/service.ts'.
+Требования:
+1. Пометь файл 'app/actions/service.ts' директивой 'use server'.
+2. Клиентский компонент '${sampledFilePath || mainFile}' должен вызывать Server Action асинхронно без прямого импорта master-ключа.
+3. Верни готовый код Server Action и точечный diff вызова из формы.`
+            : `Ты — TypeScript Strictness Architect в Cursor.
+В файле '${sampledFilePath || mainFile}' устрани все приведения типов 'as any'.
+Задача:
+1. Создай строгие Zod-схемы для всех внешних API ответов и стейтов.
+2. Оберни парсинг данных в schema.safeParse() с graceful fallback на случай невалидных данных.
+3. Экспортируй выведенные типы: type Data = z.infer<typeof DataSchema>;.`,
+        },
+        {
+          step: 3,
+          title: hasTests ? "Добавление регрессионных тестов на edge-cases" : "Внедрение первого тестового контура (Vitest)",
           estimatedTime: "15 минут",
-          prompt: `Напиши 3 критических модульных теста для основной бизнес-логики репозитория ${owner}/${repo}.
-Используй Vitest. Проверь позитивный сценарий, ошибку сети и граничный случай с пустыми данными.`,
+          targetTool: "Claude 3.7 Thinking",
+          prompt: `Ты — Senior QA Automation Lead.
+Для отрефакторенного модуля '${mainFile}' репозитория '${owner}/${repo}' напиши 3 критических автоматических теста с использованием Vitest и @testing-library/react:
+1. Тест рендера основного состояния и корректности отображения данных.
+2. Тест обработки сетевой ошибки (Network Error) и отображения fallback UI.
+3. Тест пользовательского действия (клик по кнопке действия с проверкой вызова обработчика).
+Помести тесты в файл '${mainFile.replace(/\.[^/.]+$/, "")}.test.tsx'.`,
         },
       ];
 
@@ -409,7 +447,6 @@ function analyzeSnippet(code: string): AuditReport {
   const anyMatches = (code.match(/\bas any\b/g) || []).length;
   const useEffectMatches = (code.match(/useEffect\s*\(/g) || []).length;
   const useStateMatches = (code.match(/useState\s*\(/g) || []).length;
-  const consoleErrorMatches = (code.match(/console\.(error|log)/g) || []).length;
   const secretMatches = (code.match(/(SECRET|SERVICE_ROLE|API_KEY|BEARER|TOKEN)/gi) || []).length;
   const hasClient = code.includes('"use client"') || code.includes("'use client'");
 
@@ -431,8 +468,8 @@ function analyzeSnippet(code: string): AuditReport {
       description: "Обнаружены секретные идентификаторы внутри клиентского компонента. Этот код собирается в бандл браузера.",
       severity: "CRITICAL",
       detectedIn: "snippet:client-bundle",
-      sampleBadCode: `// Клиентский компонент с секретом:\n"use client";\nconst key = process.env.SUPABASE_SERVICE_ROLE_KEY;`,
-      sampleFix: `// Вынесите приватную логику в app/api/.../route.ts или Server Action`,
+      sampleBadCode: `"use client";\nconst key = process.env.SUPABASE_SERVICE_ROLE_KEY;`,
+      sampleFix: `// Вынесите приватную логику в app/actions/route.ts или Server Action`,
     });
   }
 
@@ -442,8 +479,8 @@ function analyzeSnippet(code: string): AuditReport {
       description: "ИИ отключил проверку типов. Любое изменение структуры данных приведет к необработанному крашу у клиента.",
       severity: "HIGH",
       detectedIn: "snippet:types",
-      sampleBadCode: `// Обход проверки типов:\nconst [data, setData] = useState<any>(null);`,
-      sampleFix: `// Строгий интерфейс TypeScript:\ninterface UserPayload {\n  id: string;\n  name: string;\n}`,
+      sampleBadCode: `const [data, setData] = useState<any>(null);`,
+      sampleFix: `interface UserPayload {\n  id: string;\n  name: string;\n}`,
     });
   }
 
@@ -486,18 +523,28 @@ function analyzeSnippet(code: string): AuditReport {
     refactorSteps: [
       {
         step: 1,
-        title: "Изоляция типов и замена 'any'",
-        estimatedTime: "10 минут",
-        prompt: `Замени все 'any' в следующем коде на строгие типы TypeScript. Напиши необходимые interfaces в начале файла:\n\n${code.slice(
-          0,
-          300
-        )}...`,
+        title: `Хирургический распил компонента (${lineCount} строк)`,
+        estimatedTime: "15 минут",
+        targetTool: "Cursor Composer / Claude 3.7",
+        prompt: `Ты — Senior Refactoring Agent в Cursor / Claude 3.7.
+Перед тобой God-компонент на ${lineCount} строк.
+Твоя цель: разбить этот God-компонент на модульные подкомпоненты внутри папки '/components', сохранив все стейты (${useStateMatches} шт.), обработчики событий и пропсы без малейших визуальных или логических изменений.
+
+Строгие правила:
+1. НЕ сокращай код и не пиши комментарии вроде '// rest of code stays here'.
+2. Сохрани корневой файл как чистый оркестратор.
+3. Вынеси тяжелые части в '/components/ViewSection.tsx' и кастомный хук 'useComponentState.ts'.
+4. Напиши строгие TypeScript interfaces без 'any'.`,
       },
       {
         step: 2,
-        title: "Декомпозиция на 2 компонента",
-        estimatedTime: "15 минут",
-        prompt: `Раздели этот код на UI-представление и кастомный хук с бизнес-логикой. Сохрани все методы.`,
+        title: "Изоляция типов и замена 'any'",
+        estimatedTime: "10 минут",
+        targetTool: "Cursor Cmd+K",
+        prompt: `Замени все 'any' в следующем коде на строгие типы TypeScript. Напиши Zod-схемы для валидации внешних данных:\n\n${code.slice(
+          0,
+          260
+        )}...`,
       },
     ],
     diagnosticsSummary: `Проанализировано ${lineCount} строк кода. Найдено ${anyMatches} 'any', ${useEffectMatches} эффектов, ${useStateMatches} хуков состояния.`,
@@ -559,15 +606,39 @@ function getCursorSaasPreset(): AuditReport {
     refactorSteps: [
       {
         step: 1,
-        title: "Хирургическая изоляция API ключей (Стоп-кровотечение)",
-        estimatedTime: "10 минут",
-        prompt: `Ты — Senior Security Architect. В моем файле 'app/page.tsx' обнаружен клиентский импорт SUPABASE_SERVICE_ROLE_KEY.\nВынеси приватные операции в Server Actions 'app/actions/billing.ts'. Верни только готовый код серверного экшена.`,
+        title: "Хирургический распил God-файла app/page.tsx (2420 строк)",
+        estimatedTime: "20 минут",
+        targetTool: "Cursor Composer (Cmd+I)",
+        prompt: `Ты — Senior Refactoring Agent в Cursor / Claude 3.7.
+Твоя цель: разбить God-компонент 'app/page.tsx' (2420 строк) на модульные подкомпоненты внутри папки '/components/landing', сохранив все стейты, пропсы, хуки и анимации без малейших визуальных или функциональных изменений.
+
+Строгие правила:
+1. НЕ сокращай код и не пиши комментарии '// rest of code stays here'.
+2. Сохрани 'app/page.tsx' как чистый оркестратор не длиннее 120 строк.
+3. Вынеси UI-секции в:
+   - '/components/landing/HeroSection.tsx'
+   - '/components/landing/PricingMatrix.tsx'
+   - '/components/landing/AuthModal.tsx'
+4. Общий стейт модалок вынеси в кастомный хук '/components/landing/useLandingModals.ts'.
+5. Напиши строгие TypeScript interfaces без единого 'any'.`,
       },
       {
         step: 2,
-        title: "Распил Год-Файла app/page.tsx на 3 модуля",
-        estimatedTime: "25 минут",
-        prompt: `У меня файл app/page.tsx разросся до 2400 строк. Раздели его строго по архитектуре:\n1) components/HeroSection.tsx\n2) components/PricingMatrix.tsx\n3) components/Modals/AuthModal.tsx\nДай код каждого нового файла целиком.`,
+        title: "Изоляция SUPABASE_SERVICE_ROLE_KEY из клиентского бандла",
+        estimatedTime: "10 минут",
+        targetTool: "Cursor Cmd+K",
+        prompt: `Ты — Senior Security Engineer в Cursor.
+В файле 'app/dashboard/settings/page.tsx' обнаружен клиентский импорт SUPABASE_SERVICE_ROLE_KEY.
+Задача: вынеси все небезопасные запросы в отдельный Server Action в 'app/actions/billing.ts'.
+Верни только готовый код серверного экшена и точечный патч для вызова из клиентской формы.`,
+      },
+      {
+        step: 3,
+        title: "Уничтожение 28 приведений 'as any' через Zod",
+        estimatedTime: "15 минут",
+        targetTool: "Claude 3.7 Thinking",
+        prompt: `В файле lib/ai-handler.ts используется 28 приведений типа 'as any'.
+Напиши Zod-схему для ответа LLM и валидируй данные через schema.safeParse(). Добавь graceful fallback на случай, если нейросеть вернет сломанный JSON.`,
       },
     ],
     diagnosticsSummary: "Критическая перегруженность главного файла, отсутствие автотестов, обнаружена утечка мастер-ключа в клиентский бандл.",
@@ -611,9 +682,13 @@ function getBoltPreset(): AuditReport {
     refactorSteps: [
       {
         step: 1,
-        title: "Серверная валидация корзины",
-        estimatedTime: "20 минут",
-        prompt: `Перепиши route.ts оформления заказа так, чтобы цены брались строго из серверного конфига или базы, а не из payload клиента.`,
+        title: "Хирургический перенос расчета цен на сервер",
+        estimatedTime: "15 минут",
+        targetTool: "Cursor Composer (Cmd+I)",
+        prompt: `Ты — Senior Backend Architect в Cursor.
+В 'components/CartDrawer.tsx' цены рассчитываются на клиенте, что создает критическую уязвимость подделки сумм.
+Задача: перепиши 'app/api/checkout/route.ts' так, чтобы цены брались строго из БД по ID товаров, а клиент передавал только { id, quantity }.
+Верни готовый код серверного роута и безопасный клиентский fetch.`,
       },
     ],
     diagnosticsSummary: "Бизнес-логика корзины доверена браузеру клиента, высокий риск манипуляции ценами, дублирование глобального стейта.",
@@ -657,9 +732,16 @@ function getCryptoBotPreset(): AuditReport {
     refactorSteps: [
       {
         step: 1,
-        title: "Изоляция ключей и перехват крашей",
-        estimatedTime: "15 минут",
-        prompt: `В файле bot/index.ts оберни все операции с блокчейном в безопасный wrapper с ротацией логов без раскрытия приватных полей.`,
+        title: "Распил монолита bot/index.ts (3100 строк) на модули",
+        estimatedTime: "25 минут",
+        targetTool: "Cursor Composer (Cmd+I)",
+        prompt: `Ты — Senior Rust/Node.js Architect в Cursor.
+Файл 'bot/index.ts' разросся до 3100 строк и объединяет websocket, telegram bot и работу с приватными ключами кошельков.
+Задача: раздели этот монолит на 3 модуля внутри папки '/bot/services/':
+1) '/bot/services/telegram.ts' (только команды и UI бота)
+2) '/bot/services/dex.ts' (работа с котировками и транзакциями)
+3) '/bot/services/wallet.ts' (безопасное подписание транзакций без логирования секретных ключей)
+Сохрани все обработчики событий. Код файлов дай целиком.`,
       },
     ],
     diagnosticsSummary: "Критическая угроза утечки приватных ключей кошельков, монолитный скрипт без обработки исключений.",

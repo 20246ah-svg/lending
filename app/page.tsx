@@ -42,6 +42,7 @@ interface RefactorStep {
   title: string;
   prompt: string;
   estimatedTime: string;
+  targetTool?: string;
 }
 
 interface AuditReport {
@@ -164,27 +165,39 @@ const payload = AIResponseSchema.parse(await response.json());`,
   refactorSteps: [
     {
       step: 1,
-      title: "Хирургическая изоляция API ключей (Стоп-утечка)",
-      estimatedTime: "10 минут",
-      prompt: `Ты — Senior Security Architect. В моем файле 'app/page.tsx' обнаружен клиентский импорт SUPABASE_SERVICE_ROLE_KEY.
-Задача: вынеси все небезопасные запросы в отдельный Server Action в 'app/actions/billing.ts'.
-Требование: НЕ меняй визуальный интерфейс, верни только код серверного экшена и точечный патч для вызова из формы.`,
+      title: "Хирургический распил God-компонента app/page.tsx (2420 строк)",
+      estimatedTime: "20 минут",
+      targetTool: "Cursor Composer / Claude 3.7",
+      prompt: `Ты — Senior Refactoring Agent в Cursor / Claude 3.7.
+Твоя цель: безопасно разбить God-компонент 'app/page.tsx' (~2420 строк) на модульные подкомпоненты внутри папки '/components/landing', сохранив все стейты, хуки, пропсы и анимации без малейших визуальных или логических изменений.
+
+Строгие правила безопасного рефакторинга:
+1. НЕ сокращай код через комментарии вроде '// rest of code stays here'. Выведи полный, готовый к запуску код.
+2. Сохрани 'app/page.tsx' как чистый оркестратор не длиннее 120 строк.
+3. Разнеси субкомпоненты по файлам:
+   - '/components/landing/Header.tsx'
+   - '/components/landing/HeroSection.tsx'
+   - '/components/landing/AuditWorkbench.tsx'
+   - '/components/landing/PricingTable.tsx'
+4. Общий стейт вынеси в кастомный хук '/components/landing/useAuditState.ts'.
+5. Напиши строгие TypeScript interfaces без единого 'any'.`,
     },
     {
       step: 2,
-      title: "Распил монолитного файла app/page.tsx на 3 модуля",
-      estimatedTime: "25 минут",
-      prompt: `У меня файл app/page.tsx разросся до 2400 строк. Раздели его строго по архитектуре:
-1) components/HeroSection.tsx
-2) components/PricingMatrix.tsx
-3) components/Modals/AuthModal.tsx
-Вынеси общий стейт в URL searchParams или легкий хук. Верни код каждого нового файла целиком.`,
+      title: "Изоляция SUPABASE_SERVICE_ROLE_KEY в Server Actions",
+      estimatedTime: "10 минут",
+      targetTool: "Cursor Cmd+K",
+      prompt: `Ты — Senior Security Engineer в Cursor.
+В файле 'app/dashboard/settings/page.tsx' обнаружен клиентский импорт SUPABASE_SERVICE_ROLE_KEY.
+Задача: вынеси все небезопасные запросы в отдельный Server Action в 'app/actions/billing.ts'.
+Требование: пометь файл директивой 'use server', вызови Server Action из формы асинхронно без раскрытия мастер-ключа в JS-бандле. Верни готовый код.`,
     },
     {
       step: 3,
       title: "Замена 'any' на строгие схемы Zod",
       estimatedTime: "15 минут",
-      prompt: `В файле lib/ai-handler.ts используется множество приведений 'as any'.
+      targetTool: "Claude 3.7 Thinking",
+      prompt: `В файле lib/ai-handler.ts используется 28 приведений типов 'as any'.
 Напиши Zod-схему для ответа LLM и валидируй данные через schema.safeParse(). Добавь graceful fallback на случай, если нейросеть вернет сломанный JSON.`,
     },
   ],
@@ -246,6 +259,8 @@ export default function Home() {
   const [copiedBadge, setCopiedBadge] = useState<boolean>(false);
   const [copiedShare, setCopiedShare] = useState<boolean>(false);
   const [copiedCli, setCopiedCli] = useState<boolean>(false);
+  const [copiedAllPrompts, setCopiedAllPrompts] = useState<boolean>(false);
+  const [targetAiTool, setTargetAiTool] = useState<"cursor" | "claude">("cursor");
 
   // Lead Magnet / PR Bot Waitlist
   const [botEmail, setBotEmail] = useState<string>("");
@@ -356,6 +371,20 @@ export default function Home() {
     navigator.clipboard.writeText("npx vibedebt audit ./src");
     setCopiedCli(true);
     setTimeout(() => setCopiedCli(false), 2000);
+  };
+
+  const handleCopyAllPrompts = () => {
+    const fullPlan = auditReport.refactorSteps
+      .map(
+        (s) =>
+          `### ШАГ ${s.step}: ${s.title} (${s.estimatedTime})\nИнструмент: ${
+            targetAiTool === "cursor" ? "Cursor Composer (Cmd+I)" : "Claude 3.7 Thinking"
+          }\n\n${s.prompt}\n`
+      )
+      .join("\n---\n\n");
+    navigator.clipboard.writeText(fullPlan);
+    setCopiedAllPrompts(true);
+    setTimeout(() => setCopiedAllPrompts(false), 2000);
   };
 
   const handleBotSubmit = (e: React.FormEvent) => {
@@ -926,12 +955,12 @@ export default function Home() {
                   onClick={() => setActiveReportTab("prompts")}
                   className={`pb-2.5 px-3 border-b-2 transition cursor-pointer flex items-center gap-1.5 ${
                     activeReportTab === "prompts"
-                      ? "border-zinc-200 text-white font-semibold"
-                      : "border-transparent text-zinc-500 hover:text-zinc-300"
+                      ? "border-emerald-400 text-emerald-300 font-semibold"
+                      : "border-transparent text-emerald-500/80 hover:text-emerald-400"
                   }`}
                 >
-                  <Sparkles size={13} />
-                  {lang === "ru" ? `Промпты для рефакторинга (${auditReport.refactorSteps.length})` : `Refactor Prompts (${auditReport.refactorSteps.length})`}
+                  <Sparkles size={13} className="text-emerald-400" />
+                  <span>{lang === "ru" ? `🔥 План спасения / Промпты (${auditReport.refactorSteps.length})` : `🔥 Surgical Prompts (${auditReport.refactorSteps.length})`}</span>
                 </button>
                 <button
                   onClick={() => setActiveReportTab("radar")}
@@ -1025,45 +1054,105 @@ export default function Home() {
               {/* SUB-TAB 3: PROMPTS */}
               {activeReportTab === "prompts" && (
                 <div className="space-y-4">
-                  <div className="p-3 rounded-lg border border-zinc-800 bg-zinc-950 text-xs font-sans text-zinc-300">
-                    <strong>{lang === "ru" ? "Инструкция:" : "Usage:"}</strong>{" "}
-                    {lang === "ru"
-                      ? "Не просите ИИ «сделать полный рефакторинг» (это сломает логику). Скопируйте данные точечные промпты по очереди в Cursor или Claude 3.7."
-                      : "Never ask AI to 'refactor everything' at once. Feed these targeted micro-prompts sequentially into Cursor or Claude 3.7."}
+                  {/* LEAD MAGNET HEADER */}
+                  <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono text-[10px] font-bold uppercase tracking-wider">
+                          🔥 {lang === "ru" ? "Главный инструмент спасения" : "Core Rescue Tool"}
+                        </span>
+                        <span className="text-xs font-semibold text-white">
+                          {lang === "ru" ? "Хирургический рефакторинг под ИИ-ассистентов" : "Surgical Refactoring Prompts"}
+                        </span>
+                      </div>
+                      <p className="text-xs text-zinc-400 font-sans mt-1">
+                        {lang === "ru"
+                          ? "Промпты декомпозируют ваш код на изолированные файлы без потери бизнес-логики и UI."
+                          : "Custom-tailored prompts that safely decompose your code without breaking UI or state."}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex items-center rounded-lg border border-zinc-800 bg-zinc-950 p-0.5 text-xs font-mono">
+                        <button
+                          onClick={() => setTargetAiTool("cursor")}
+                          className={`px-2.5 py-1 rounded transition cursor-pointer flex items-center gap-1 ${
+                            targetAiTool === "cursor"
+                              ? "bg-zinc-800 text-white font-medium"
+                              : "text-zinc-500 hover:text-zinc-300"
+                          }`}
+                        >
+                          <Zap size={11} className="text-emerald-400" />
+                          <span>Cursor (Cmd+I)</span>
+                        </button>
+                        <button
+                          onClick={() => setTargetAiTool("claude")}
+                          className={`px-2.5 py-1 rounded transition cursor-pointer flex items-center gap-1 ${
+                            targetAiTool === "claude"
+                              ? "bg-zinc-800 text-white font-medium"
+                              : "text-zinc-500 hover:text-zinc-300"
+                          }`}
+                        >
+                          <Sparkles size={11} className="text-purple-400" />
+                          <span>Claude 3.7</span>
+                        </button>
+                      </div>
+
+                      <button
+                        onClick={handleCopyAllPrompts}
+                        className="px-3 py-1.5 rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-mono transition flex items-center gap-1.5 cursor-pointer shrink-0"
+                      >
+                        {copiedAllPrompts ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                        <span>{copiedAllPrompts ? (lang === "ru" ? "Все скопировано!" : "All Copied!") : (lang === "ru" ? "Скопировать весь план" : "Copy Full Plan")}</span>
+                      </button>
+                    </div>
                   </div>
 
+                  {/* PROMPT CARDS */}
                   {auditReport.refactorSteps.map((step, idx) => (
                     <div key={idx} className="p-4 rounded-xl border border-zinc-800 bg-zinc-950/70">
-                      <div className="flex items-center justify-between mb-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                         <div className="flex items-center gap-2">
                           <span className="w-5 h-5 rounded bg-zinc-800 text-zinc-300 text-xs font-mono flex items-center justify-center font-bold">
                             {step.step}
                           </span>
-                          <span className="font-medium text-xs text-white">{step.title}</span>
+                          <span className="font-semibold text-xs text-white">{step.title}</span>
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-400">
+                            {targetAiTool === "cursor" ? "⚡ Cursor Composer" : "🧠 Claude 3.7 Thinking"}
+                          </span>
                         </div>
                         <span className="text-[11px] font-mono text-zinc-500">⏱️ {step.estimatedTime}</span>
                       </div>
 
                       <div className="relative mt-2">
-                        <pre className="p-3 rounded-lg bg-zinc-950 border border-zinc-800 text-xs font-mono text-zinc-300 whitespace-pre-wrap overflow-x-auto">
+                        <pre className="p-3.5 rounded-lg bg-zinc-950 border border-zinc-800 text-xs font-mono text-zinc-200 whitespace-pre-wrap overflow-x-auto leading-relaxed">
                           {step.prompt}
                         </pre>
                         <button
                           onClick={() => copyPrompt(step.prompt, idx)}
-                          className="absolute right-2 top-2 px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-xs font-mono text-zinc-200 flex items-center gap-1 transition cursor-pointer"
+                          className="absolute right-2.5 top-2.5 px-3 py-1.5 rounded-md bg-zinc-800 hover:bg-zinc-700 text-xs font-mono text-zinc-100 flex items-center gap-1.5 transition cursor-pointer shadow-sm border border-zinc-700/60"
                         >
                           {copiedPromptIdx === idx ? (
                             <>
                               <Check size={12} className="text-emerald-400" />
-                              <span className="text-emerald-400">{lang === "ru" ? "Скопировано!" : "Copied!"}</span>
+                              <span className="text-emerald-400 font-bold">{lang === "ru" ? "Скопировано!" : "Copied!"}</span>
                             </>
                           ) : (
                             <>
                               <Copy size={12} />
-                              <span>{lang === "ru" ? "Скопировать промпт" : "Copy Prompt"}</span>
+                              <span>{lang === "ru" ? "Скопировать для Cursor" : "Copy for Cursor"}</span>
                             </>
                           )}
                         </button>
+                      </div>
+
+                      <div className="mt-2.5 text-[11px] font-mono text-zinc-500 flex items-center gap-1.5">
+                        <span className="text-emerald-400">●</span>
+                        <span>
+                          {lang === "ru"
+                            ? "Как применить: откройте Cursor, нажмите Cmd+I (Composer), вставьте промпт и нажмите Enter."
+                            : "How to use: open Cursor, press Cmd+I (Composer), paste prompt and hit Enter."}
+                        </span>
                       </div>
                     </div>
                   ))}
