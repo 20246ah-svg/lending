@@ -483,6 +483,28 @@ export default function Home() {
             : "AI writes code at lightspeed, but leaves a mountain of hidden debt: 2000-line monolithic files, cascading `as any`, infinite useEffect loops, and exposed keys. VibeDebt calculates your exact time-to-disaster and gives you surgical prompts to fix it."}
         </p>
 
+        {/* 3-STEP HOW IT WORKS GUIDE */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-3xl mx-auto mb-8 text-xs font-mono text-zinc-400">
+          <div className="p-3 rounded-lg border border-zinc-800/80 bg-zinc-900/30 flex items-center gap-2.5">
+            <span className="w-5 h-5 rounded-full bg-zinc-800 text-white font-bold flex items-center justify-center shrink-0 text-[11px]">
+              1
+            </span>
+            <span>{lang === "ru" ? "Вставь ссылку на GitHub или код" : "Paste GitHub URL or snippet"}</span>
+          </div>
+          <div className="p-3 rounded-lg border border-zinc-800/80 bg-zinc-900/30 flex items-center gap-2.5">
+            <span className="w-5 h-5 rounded-full bg-zinc-800 text-white font-bold flex items-center justify-center shrink-0 text-[11px]">
+              2
+            </span>
+            <span>{lang === "ru" ? "AST сканирует размеры, типы и тесты" : "AST parses files, types & tests"}</span>
+          </div>
+          <div className="p-3 rounded-lg border border-zinc-800/80 bg-zinc-900/30 flex items-center gap-2.5">
+            <span className="w-5 h-5 rounded-full bg-zinc-800 text-white font-bold flex items-center justify-center shrink-0 text-[11px]">
+              3
+            </span>
+            <span>{lang === "ru" ? "Получи вердикт и промпт для фикса" : "Get verdict & Cursor fix prompt"}</span>
+          </div>
+        </div>
+
         {/* AUDIT WORKBENCH */}
         <div
           id="audit-tool"
@@ -1148,6 +1170,58 @@ export default function Home() {
               {copiedCli ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
               <span>{copiedCli ? (lang === "ru" ? "Скопировано!" : "Copied!") : (lang === "ru" ? "Копировать" : "Copy")}</span>
             </button>
+          </div>
+        </div>
+      </section>
+
+      {/* HOW IT WORKS / IS THERE AI SECTION */}
+      <section className="py-16 px-4 sm:px-8 border-t border-zinc-800/80 bg-zinc-900/30 z-10 relative">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center max-w-2xl mx-auto mb-10">
+            <h2 className="text-xl sm:text-2xl font-bold text-white mb-2">
+              {lang === "ru" ? "Как происходит анализ репозитория: есть ли здесь отдельный ИИ?" : "How Repository Analysis Works: Is There an AI Under the Hood?"}
+            </h2>
+            <p className="text-xs sm:text-sm text-zinc-400 font-sans">
+              {lang === "ru"
+                ? "Мы используем гибридную архитектуру: детерминированный статический анализ плюс контекстные генераторы промптов."
+                : "We utilize a hybrid architecture: deterministic static AST analysis paired with contextual prompt engines."}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-5 rounded-xl border border-zinc-800 bg-zinc-950/70">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 text-[10px] font-mono font-bold uppercase">
+                  Уровень 1 // Мгновенно
+                </span>
+                <span className="text-xs font-mono font-bold text-white">Статический AST-сканер</span>
+              </div>
+              <p className="text-xs text-zinc-400 font-sans leading-relaxed mb-3">
+                {lang === "ru"
+                  ? "Считывает дерево файлов через GitHub API без участия нейросети. Проверяет package.json на наличие тестов (jest, vitest), замеряет объемы файлов и ищет паттерны 'as any', утечек ключей и циклов в useEffect. Работает за 0.5 секунды со 100% точностью и без галлюцинаций."
+                  : "Fetches repository file tree via GitHub REST API without LLM hallucination risk. Inspects package.json for test runners, checks file line lengths, detects 'as any' cascades and exposed secrets in sub-second time."}
+              </p>
+              <div className="text-[11px] font-mono text-emerald-400 pt-2 border-t border-zinc-800/80">
+                ✓ {lang === "ru" ? "Чистая математика и факты кода" : "Pure code heuristics & facts"}
+              </div>
+            </div>
+
+            <div className="p-5 rounded-xl border border-zinc-800 bg-zinc-950/70">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20 text-[10px] font-mono font-bold uppercase">
+                  Уровень 2 // ИИ-рефакторинг
+                </span>
+                <span className="text-xs font-mono font-bold text-white">Контекстный мета-промптер</span>
+              </div>
+              <p className="text-xs text-zinc-400 font-sans leading-relaxed mb-3">
+                {lang === "ru"
+                  ? "На основе найденных аномалий (например, обнаружен монолитный app/page.tsx на 1100 строк) формирует узконаправленный системный промпт для Claude 3.7 или Cursor. Промпт дает строгие рамки, запрещающие ИИ ломать существующий UI при распиле логики."
+                  : "Takes detected anomalies (such as a 1,100-line monolithic file) and generates constrained surgical instructions for Claude 3.7 or Cursor, preventing the AI from breaking existing business logic during refactors."}
+              </p>
+              <div className="text-[11px] font-mono text-purple-400 pt-2 border-t border-zinc-800/80">
+                ✓ {lang === "ru" ? "Безопасное исправление через Cursor" : "Safe iterative Cursor refactoring"}
+              </div>
+            </div>
           </div>
         </div>
       </section>
