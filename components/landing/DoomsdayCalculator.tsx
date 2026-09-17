@@ -9,6 +9,7 @@ import { AuditRequestBody } from "@/lib/types";
 
 interface DoomsdayCalculatorProps {
   lang: "ru" | "en";
+  isAuditing?: boolean;
   onRunAudit: (payload: AuditRequestBody) => void;
 }
 
@@ -16,13 +17,18 @@ function formatNumber(num: number): string {
   return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 }
 
-export default function DoomsdayCalculator({ lang, onRunAudit }: DoomsdayCalculatorProps) {
+export default function DoomsdayCalculator({ lang, isAuditing = false, onRunAudit }: DoomsdayCalculatorProps) {
   const t = i18n[lang];
   const [calcAiLines, setCalcAiLines] = useState(5500);
   const [calcGodFiles, setCalcGodFiles] = useState(3);
   const [calcHasTests, setCalcHasTests] = useState(false);
   const [calcDbState, setCalcDbState] = useState<"clean" | "medium" | "mess">("medium");
   const [bridgeUrl, setBridgeUrl] = useState("https://github.com/shadcn-ui/ui");
+
+  const handleStartBridge = () => {
+    if (!bridgeUrl.trim() || isAuditing) return;
+    onRunAudit({ url: bridgeUrl.trim(), lang });
+  };
 
   const calculateDoomsday = () => {
     let score = 20;
@@ -211,11 +217,12 @@ export default function DoomsdayCalculator({ lang, onRunAudit }: DoomsdayCalcula
               className="flex-1 bg-zinc-900/80 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500"
             />
             <button
-              onClick={() => onRunAudit({ url: bridgeUrl, lang })}
-              className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-mono font-bold text-xs uppercase tracking-wider rounded-lg transition cursor-pointer shrink-0 flex items-center justify-center gap-1.5 shadow-md"
+              onClick={handleStartBridge}
+              disabled={isAuditing || !bridgeUrl.trim()}
+              className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed text-zinc-950 font-mono font-bold text-xs uppercase tracking-wider rounded-lg transition cursor-pointer shrink-0 flex items-center justify-center gap-1.5 shadow-md"
             >
               <ZapIcon size={14} className="fill-zinc-950 text-zinc-950" />
-              <span>{t.calcBridgeBtn}</span>
+              <span>{isAuditing ? (lang === "ru" ? "Сканируем..." : "Scanning...") : t.calcBridgeBtn}</span>
             </button>
           </div>
         </TiltCard>

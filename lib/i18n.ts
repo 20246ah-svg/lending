@@ -1,7 +1,7 @@
 export const i18n = {
   ru: {
-    badgeProof: "⚠️ 84% КРИТИЧЕСКИЙ РИСК",
-    badgeProofSub: "Средний уровень хрупкости в 1 420+ проверенных AI-проектах",
+    badgeProof: "⚡ ЭВРИСТИЧЕСКИЙ АУДИТ ТЕХДОЛГА",
+    badgeProofSub: "Анализ 5 критических антипаттернов AI-сгенерированного кода",
     heroTitle1: "ОСТАНОВИ ВАЙБ-СПАГЕТТИ.",
     heroTitle2: "ВЫПУСКАЙ НАДЕЖНЫЙ ПРОДАКШН-КОД.",
     heroSub: "Эвристический аудитор кода для соло-фаундеров на Cursor и Lovable. Рассчитай Doomsday Score за 1 секунду, найди скрытые точки отказа и получи хирургические промпты для безопасного распила.",
@@ -46,8 +46,8 @@ export const i18n = {
     pricingSub: "Бесплатный экспресс-аудит для каждого фаундера. Без привязки карт.",
   },
   en: {
-    badgeProof: "⚠️ 84% CRITICAL RISK",
-    badgeProofSub: "Average fragility across 1,420+ scanned AI codebases",
+    badgeProof: "⚡ HEURISTIC TECH DEBT AUDITOR",
+    badgeProofSub: "Detecting 5 critical failure vectors in AI-generated code",
     heroTitle1: "STOP VIBE SLOP.",
     heroTitle2: "SHIP BULLETPROOF CODE.",
     heroSub: "Heuristic code auditor for solo builders on Cursor & Lovable. Calculate your Doomsday Score in 1 second, locate critical fragility points, and generate surgical refactoring prompts.",

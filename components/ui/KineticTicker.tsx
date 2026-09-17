@@ -14,18 +14,18 @@ const ITEMS_RU = [
   "ХИРУРГИЧЕСКИЕ ПРОМПТЫ ДЛЯ CURSOR",
   "ПРИВАТНЫЙ АУДИТ БЕЗ УТЕЧЕК ДАННЫХ",
   "ПРОВЕРКА ФАНТОМНЫХ NPM-ПАКЕТОВ",
-  "SAST-КОНТРОЛЬ CWE УЯЗВИМОСТЕЙ",
+  "АНАЛИЗ CWE УЯЗВИМОСТЕЙ",
   "АВТОТЕСТЫ VITEST ДЛЯ РЕГРЕССИЙ",
 ];
 
 const ITEMS_EN = [
   "DOOMSDAY RADAR",
-  "AST CODE GRAPH",
+  "AI CODE DECAY DETECTOR",
   "GOD-FILE SPLITTER",
   "SURGICAL CURSOR PROMPTS",
   "ZERO DATA EXFILTRATION",
-  "SUPPLY CHAIN PHANTOM SCAN",
-  "CWE SECURITY COMPLIANCE",
+  "PHANTOM NPM SCAN",
+  "CWE VULNERABILITY AUDIT",
   "VITEST HARNESS GENERATOR",
 ];
 

@@ -1,26 +1,22 @@
 import { NextResponse } from "next/server";
-import { AuditReport, GodComponent, Antipattern, RefactorStep, AuditRequestBody } from "@/lib/types";
+import type { AuditReport, GodComponent, Antipattern, RefactorStep, AuditRequestBody } from "@/lib/types";
+import {
+  parseGitHubUrl,
+  isIgnoredFile,
+  stripCodeLiteralsAndComments,
+  formatTimeToCollapse,
+  sortPackageJsonCandidates,
+  analyzeSnippet,
+  getCursorPrompt,
+  getClaudePrompt,
+  LRUCache,
+  SimpleRateLimiter,
+} from "@/lib/audit-core";
 
-// In-memory cache for GitHub audit results to prevent rate limit depletion
-interface CacheEntry {
-  report: AuditReport;
-  timestamp: number;
-}
-const auditCache = new Map<string, CacheEntry>();
-const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
-
-function parseGitHubUrl(url: string): { owner: string; repo: string } | null {
-  const clean = url.trim().replace(/\/$/, "");
-  const match = clean.match(/github\.com\/([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)/);
-  if (match) {
-    return { owner: match[1], repo: match[2].replace(/\.git$/, "") };
-  }
-  const parts = clean.split("/").filter(Boolean);
-  if (parts.length === 2 && !clean.includes(" ")) {
-    return { owner: parts[0], repo: parts[1].replace(/\.git$/, "") };
-  }
-  return null;
-}
+// LRU Cache with 250 max entries and 1 hour TTL
+const auditCache = new LRUCache<AuditReport>(250, 3600000);
+// Rate limiter: 30 requests per minute per IP
+const rateLimiter = new SimpleRateLimiter();
 
 async function fetchWithTimeout(url: string, headers: Record<string, string> = {}, timeoutMs = 8000): Promise<Response> {
   const controller = new AbortController();
@@ -32,28 +28,17 @@ async function fetchWithTimeout(url: string, headers: Record<string, string> = {
   }
 }
 
-function isIgnoredFile(path: string): boolean {
-  const lower = path.toLowerCase();
-  return (
-    lower.includes(".test.") ||
-    lower.includes(".spec.") ||
-    lower.includes("__tests__") ||
-    lower.includes("/tests/") ||
-    lower.includes("/test/") ||
-    lower.endsWith(".d.ts") ||
-    lower.endsWith(".min.js") ||
-    lower.endsWith(".min.css") ||
-    lower.includes("node_modules/") ||
-    lower.includes("dist/") ||
-    lower.includes("build/") ||
-    lower.includes(".next/") ||
-    lower.includes("fixtures/") ||
-    lower.includes("mocks/")
-  );
-}
-
 export async function POST(req: Request) {
   try {
+    // 1. Rate limiting by IP
+    const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "anonymous";
+    if (!rateLimiter.isAllowed(clientIp, 35, 60000)) {
+      return NextResponse.json(
+        { error: "Too many audit requests. Please wait a minute before running another scan." },
+        { status: 429 }
+      );
+    }
+
     let body: AuditRequestBody;
     try {
       body = await req.json();
@@ -64,7 +49,7 @@ export async function POST(req: Request) {
     const { url, snippet, archetype, lang = "ru" } = body;
     const isRu = lang === "ru";
 
-    // 1. Archetype Presets handler
+    // 2. Archetype Presets handler
     if (archetype) {
       if (archetype === "bolt-landing") {
         return NextResponse.json({ success: true, data: getBoltPreset(isRu) });
@@ -75,13 +60,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, data: getCursorSaasPreset(isRu) });
     }
 
-    // 2. Snippet Analysis handler
+    // 3. Snippet Analysis handler with size guard
     if (snippet && typeof snippet === "string" && snippet.trim().length > 10) {
+      if (snippet.length > 100000) {
+        return NextResponse.json(
+          { error: isRu ? "Сниппет слишком велик (макс 100 КБ)" : "Snippet too large (max 100 KB)" },
+          { status: 400 }
+        );
+      }
       const report = analyzeSnippet(snippet, isRu);
       return NextResponse.json({ success: true, data: report });
     }
 
-    // 3. GitHub Repository Analysis
+    // 4. GitHub Repository Analysis
     if (url && typeof url === "string") {
       const parsed = parseGitHubUrl(url);
       if (!parsed) {
@@ -98,10 +89,10 @@ export async function POST(req: Request) {
       const { owner, repo } = parsed;
       const cacheKey = `${owner.toLowerCase()}/${repo.toLowerCase()}:${lang}`;
 
-      // Check cache
+      // Check LRU cache
       const cached = auditCache.get(cacheKey);
-      if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-        return NextResponse.json({ success: true, data: cached.report });
+      if (cached) {
+        return NextResponse.json({ success: true, data: cached });
       }
 
       const headers: Record<string, string> = {
@@ -138,12 +129,12 @@ export async function POST(req: Request) {
         );
       }
 
-      if (repoRes.status === 403) {
+      if (repoRes.status === 429 || repoRes.status === 403) {
         return NextResponse.json(
           {
             error: isRu
-              ? "Превышен лимит запросов к GitHub API без авторизации (60/час). Воспользуйтесь вкладкой «Вставить код» для мгновенного анализа."
-              : "GitHub API rate limit exceeded. Please use the 'Paste Code' tab for instant analysis.",
+              ? "Превышен лимит запросов к GitHub API. Воспользуйтесь вкладкой «Вставить код» для мгновенного анализа."
+              : "GitHub API rate limit reached. Please use the 'Paste Code' tab for instant analysis.",
             isRateLimited: true,
           },
           { status: 429 }
@@ -180,7 +171,7 @@ export async function POST(req: Request) {
           treeItems = treeData.tree || [];
         }
       } catch {
-        // Continue with empty tree if tree call fails
+        // Continue with empty tree if tree fetch fails
       }
 
       // Check package.json & lockfiles
@@ -191,12 +182,15 @@ export async function POST(req: Request) {
       const lockFiles = ["package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock", "bun.lockb"];
       const hasLockFile = treeItems.some((f) => lockFiles.some((lf) => f.path.endsWith(lf)));
 
-      const pkgItem = treeItems.find((item) => item.path === "package.json" || item.path.endsWith("/package.json"));
-      if (pkgItem) {
+      // Prioritize root package.json over nested submodules!
+      const allTreePaths = treeItems.map((t) => t.path);
+      const chosenPackageJsonPath = sortPackageJsonCandidates(allTreePaths);
+
+      if (chosenPackageJsonPath) {
         hasPackageJson = true;
         try {
           const pkgRes = await fetchWithTimeout(
-            `https://api.github.com/repos/${owner}/${repo}/contents/${pkgItem.path}?ref=${defaultBranch}`,
+            `https://api.github.com/repos/${owner}/${repo}/contents/${chosenPackageJsonPath}?ref=${defaultBranch}`,
             headers
           );
           if (pkgRes.ok) {
@@ -222,21 +216,13 @@ export async function POST(req: Request) {
             }
           }
         } catch {
-          // ignore package.json parse errors
+          // ignore package.json parse error
         }
       }
 
-      // Check for test files in tree
-      const testFiles = treeItems.filter(
-        (t) =>
-          t.path.includes(".test.") ||
-          t.path.includes(".spec.") ||
-          t.path.includes("__tests__/") ||
-          t.path.includes("/tests/") ||
-          t.path.includes("/test/")
-      );
-      if (testFiles.length > 0) {
-        hasTests = true;
+      // Check for test files in tree (including root tests/ and test/)
+      if (!hasTests) {
+        hasTests = treeItems.some((t) => isIgnoredFile(t.path));
       }
 
       // Filter real application source code files (exclude tests, minified, types)
@@ -245,7 +231,7 @@ export async function POST(req: Request) {
         (t) => t.type === "blob" && !isIgnoredFile(t.path) && codeExtensions.some((ext) => t.path.endsWith(ext))
       );
 
-      // Sort by size to find God-components
+      // Sort by size to identify God-components
       const sortedSourceBySize = [...realSourceFiles]
         .filter((t) => typeof t.size === "number" && t.size > 0)
         .sort((a, b) => (b.size || 0) - (a.size || 0));
@@ -276,11 +262,13 @@ export async function POST(req: Request) {
         }
       }
 
-      // Static checks in sampled file
-      const anyMatches = (sampledCode.match(/\bas any\b/g) || []).length;
+      // Strip comments and string literals to prevent false positives!
+      const sanitizedSampledCode = stripCodeLiteralsAndComments(sampledCode);
+
+      const anyMatches = (sanitizedSampledCode.match(/\bas any\b/g) || []).length;
       const isClientFile = sampledCode.includes('"use client"') || sampledCode.includes("'use client'");
       const secretMatches = isClientFile
-        ? (sampledCode.match(/(SERVICE_ROLE|STRIPE_SECRET_KEY|PRIVATE_KEY)/gi) || []).length
+        ? (sanitizedSampledCode.match(/(SERVICE_ROLE|STRIPE_SECRET|SECRET_KEY|PRIVATE_KEY)/gi) || []).length
         : 0;
 
       // God files criteria: files > 14 KB (~350+ lines)
@@ -343,12 +331,12 @@ export async function POST(req: Request) {
           title: isRu ? "Утечка API ключей / Секретов в открытый бандл" : "Master Secrets in Client Bundle",
           cwe: "CWE-798",
           description: isRu
-            ? `В файле ${sampledFilePath} найдены сервисные переменные (SERVICE_ROLE_KEY / PRIVATE_KEY) в клиентском коде ('use client'). Ключ доступен любому пользователю через DevTools.`
+            ? `В файле ${sampledFilePath} найдены сервисные переменные в клиентском коде ('use client'). Ключ доступен любому пользователю через DevTools.`
             : `In file ${sampledFilePath}, private master credentials were found in client-side code ('use client'). Any browser can read this key.`,
           severity: "CRITICAL",
           detectedIn: sampledFilePath,
-          sampleBadCode: `// Найдено упоминание секретных ключей:\nprocess.env.SUPABASE_SERVICE_ROLE_KEY`,
-          sampleFix: `// Вынесите приватные операции в Server Actions:\n"use server";\nexport async function adminAction() { ... }`,
+          sampleBadCode: `process.env.SUPABASE_SERVICE_ROLE_KEY`,
+          sampleFix: `"use server";\nexport async function adminAction() { ... }`,
         });
       }
 
@@ -387,7 +375,7 @@ export async function POST(req: Request) {
           title: isRu ? "Supply Chain Risk: Отсутствие lock-файла" : "Supply Chain Risk: Missing Lockfile",
           cwe: "CWE-1357",
           description: isRu
-            ? "В репозитории не найден ни package-lock.json, ни pnpm-lock, ни bun.lock. До 19.7% рекомендаций библиотек от ИИ указывают на несуществующие пакеты, которые злоумышленники могут захватить."
+            ? "В репозитории не найден ни package-lock.json, ни pnpm-lock, ни bun.lock. До 19.7% рекомендаций библиотек от ИИ указывают на несуществующие пакеты."
             : "Missing lockfile (package-lock.json, pnpm-lock.yaml, or bun.lock). Unpinned dependencies risk hallucinated package attacks.",
           severity: "HIGH",
           detectedIn: "root",
@@ -426,16 +414,11 @@ export async function POST(req: Request) {
         ? 2.1
         : Math.min(9.8, Math.max(2.5, +(doomsdayScore / 10).toFixed(1)));
 
-      const timeToCollapse = isHealthy
-        ? (isRu ? "Более 100 коммитов (стабильная архитектура)" : "Over 100 commits (healthy architecture)")
-        : doomsdayScore > 75
-        ? (isRu ? `${Math.max(4, Math.round((100 - doomsdayScore) * 1.1))} коммитов до блокирующего сбоя` : `${Math.max(4, Math.round((100 - doomsdayScore) * 1.1))} commits until regression lock`)
-        : (isRu ? `${Math.round((100 - doomsdayScore) * 1.5)} коммитов до регрессии` : `${Math.round((100 - doomsdayScore) * 1.5)} commits to degradation`);
+      const timeToCollapse = formatTimeToCollapse(doomsdayScore, isRu);
 
       // Dynamic surgical prompts
       const mainFile = topLargest[0]?.path || "app/page.tsx";
       const mainFileLines = godComponents[0]?.lines || 450;
-      const cleanBaseName = mainFile.split("/").pop()?.replace(/\.[^/.]+$/, "") || "Component";
 
       const refactorSteps: RefactorStep[] = [
         {
@@ -444,51 +427,15 @@ export async function POST(req: Request) {
             ? `Безопасный распил модуля ${mainFile} (~${mainFileLines} строк)`
             : `Decouple monolith module ${mainFile} (~${mainFileLines} LOC)`,
           estimatedTime: "15 минут",
-          targetTool: "Cursor Composer / Claude 3.7",
-          prompt: isRu
-            ? `Ты — Senior Refactoring Agent в Cursor / Claude 3.7.
-Задача: примени Single Responsibility Principle к модулю '${mainFile}' (~${mainFileLines} строк).
-Безопасно разбей его на 3 слабосвязанных компонента в '/components/${cleanBaseName}/':
-1. Сохрани '${mainFile}' как чистый оркестратор не более 100 строк.
-2. Вынеси UI и стейт в изолированные подкомпоненты.
-3. Сохрани все пропсы, хуки и типы без использования 'any'. Верни полный рабочий код без комментариев '// rest of code stays here'.`
-            : `You are a Senior Refactoring Agent in Cursor / Claude 3.7.
-Goal: Apply Single Responsibility Principle to '${mainFile}' (~${mainFileLines} LOC).
-Decouple safely into 3 modular components under '/components/${cleanBaseName}/':
-1. Keep '${mainFile}' as clean orchestrator under 100 lines.
-2. Isolate state and UI logic into typed modules.
-3. Preserve all hooks and props without any 'as any' casts. Output complete code.`,
+          targetTool: "Cursor Composer",
+          prompt: getCursorPrompt(mainFile, mainFileLines, isRu),
         },
         {
           step: 2,
-          title: secretMatches > 0
-            ? (isRu ? "Изоляция приватных ключей в Server Actions" : "Isolate Master Secrets to Server Actions")
-            : (isRu ? "Строгая валидация типов через Zod" : "Strict Type Validation via Zod"),
-          estimatedTime: "10 минут",
-          targetTool: "Cursor Cmd+K",
-          prompt: secretMatches > 0
-            ? `Ты — Senior Security Engineer в Cursor.
-В '${sampledFilePath || mainFile}' найдена сервисная переменная в клиентском бандле.
-Вынеси обращение к базе данных в защищенный Server Action в 'app/actions/secure.ts' с директивой 'use server'.`
-            : `Ты — TypeScript Strictness Architect.
-В '${sampledFilePath || mainFile}' замени все приведения 'as any' на строгие схемы Zod с проверкой ошибок через safeParse().`,
-        },
-        {
-          step: 3,
-          title: isRu ? "Генерация регрессионного тестового набора Vitest" : "Generate Vitest Regression Suite",
+          title: isRu ? "Глубокий анализ архитектуры Claude 3.7" : "Claude 3.7 Deep Architecture Audit",
           estimatedTime: "10 минут",
           targetTool: "Claude 3.7 Thinking",
-          prompt: isRu
-            ? `Напиши 4 юнит-теста Vitest для ключевых функций '${mainFile}':
-1. Валидный успешный сценарий (Happy path).
-2. Пустой ввод / null / undefined.
-3. Неверный формат данных.
-4. Ошибка сети и таймаут 5 секунд.`
-            : `Generate 4 Vitest unit tests for core functions in '${mainFile}':
-1. Valid happy path scenario.
-2. Empty/null input handling.
-3. Malformed data payload.
-4. Network failure with 5-second timeout.`,
+          prompt: getClaudePrompt(mainFile, mainFileLines, isRu),
         },
       ];
 
@@ -511,15 +458,15 @@ Decouple safely into 3 modular components under '/components/${cleanBaseName}/':
         refactorSteps,
         diagnosticsSummary: isRu
           ? `Просканировано ${realSourceFiles.length} файлов. Doomsday Score: ${doomsdayScore}%. ${
-              hasTests ? "Автотесты присутствуют." : "Обнаружен критический разрыв в тестировании (0 тестов)."
+              hasTests ? "Автотесты присутствуют." : "Обнаружен разрыв в тестировании (0 тестов)."
             }`
           : `Scanned ${realSourceFiles.length} files. Doomsday Score: ${doomsdayScore}%. ${
-              hasTests ? "Tests present." : "Critical testing gap identified."
+              hasTests ? "Tests present." : "Testing gap identified."
             }`,
       };
 
-      // Save to cache
-      auditCache.set(cacheKey, { report, timestamp: Date.now() });
+      // Save to LRU cache
+      auditCache.set(cacheKey, report);
 
       return NextResponse.json({ success: true, data: report });
     }
@@ -528,127 +475,12 @@ Decouple safely into 3 modular components under '/components/${cleanBaseName}/':
       { error: isRu ? "Необходимо передать url, snippet или archetype" : "Must provide url, snippet, or archetype" },
       { status: 400 }
     );
-  } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : "Unknown audit engine error";
+  } catch {
     return NextResponse.json(
-      { error: "Audit engine internal error", details: errorMsg },
+      { error: "Audit engine internal error. Please try again or paste code snippet." },
       { status: 500 }
     );
   }
-}
-
-// ---------------------------------------------------------
-// Static Snippet Analysis
-// ---------------------------------------------------------
-function analyzeSnippet(code: string, isRu = true): AuditReport {
-  const lineCount = code.split("\n").length;
-  const anyMatches = (code.match(/\bas any\b/g) || []).length;
-  const hasClient = code.includes('"use client"') || code.includes("'use client'");
-  const secretMatches = (code.match(/(SERVICE_ROLE|STRIPE_SECRET|SECRET_KEY|API_KEY)/gi) || []).length;
-  const hasObjectDepLoop = code.includes("useEffect") && code.includes("[filters]") || code.includes("[options]");
-  const emptyCatchMatches = (code.match(/catch\s*\([^)]*\)\s*\{\s*\}/g) || []).length;
-
-  let score = 25;
-  if (hasClient && secretMatches > 0) score += 30;
-  if (hasObjectDepLoop) score += 18;
-  if (emptyCatchMatches > 0) score += 15;
-  if (anyMatches > 0) score += Math.min(20, anyMatches * 5);
-  if (lineCount > 300) score += 20;
-
-  const doomsdayScore = Math.min(95, Math.max(15, score));
-  const antipatterns: Antipattern[] = [];
-
-  if (hasClient && secretMatches > 0) {
-    antipatterns.push({
-      title: isRu ? "Секретные ключи в клиентском бандле ('use client')" : "Master Secrets in Client Bundle ('use client')",
-      cwe: "CWE-798",
-      description: isRu
-        ? "Приватные переменные импортированы в клиентский компонент. Любой пользователь видит этот токен в DevTools браузера."
-        : "Private credentials imported in client component. Exposed in public browser DevTools.",
-      severity: "CRITICAL",
-      detectedIn: "snippet:line-7",
-      sampleBadCode: `const supabase = createClient(url, process.env.SUPABASE_SERVICE_ROLE_KEY!);`,
-      sampleFix: `"use server";\nexport async function adminTask() { ... }`,
-    });
-  }
-
-  if (hasObjectDepLoop) {
-    antipatterns.push({
-      title: isRu ? "Бесконечный цикл ререндера в useEffect" : "Infinite Rerender Loop in useEffect",
-      cwe: "CWE-400",
-      description: isRu
-        ? "Объект в зависимостях пересоздается при каждом рендере, вызывая лавину запросов к БД."
-        : "Object recreated every render in dependency array, firing 20+ queries per second.",
-      severity: "HIGH",
-      detectedIn: "snippet:useEffect",
-      sampleBadCode: `useEffect(() => { fetchData(filters); }, [filters]);`,
-      sampleFix: `const filterKey = useMemo(() => JSON.stringify(filters), [filters]);\nuseEffect(() => { fetchData(filters); }, [filterKey]);`,
-    });
-  }
-
-  if (anyMatches > 0) {
-    antipatterns.push({
-      title: isRu ? `Подавление типов через 'as any' (${anyMatches} шт.)` : `Type Suppression via 'as any' (${anyMatches} found)`,
-      cwe: "CWE-704",
-      description: isRu
-        ? "Отключение статической проверки типов ведет к тихим падениям приложения у реальных пользователей."
-        : "Bypassing TypeScript checks causes unexpected runtime errors.",
-      severity: "HIGH",
-      detectedIn: "snippet:types",
-      sampleBadCode: `const payload = (await res.json()) as any;`,
-      sampleFix: `const schema = z.object({ id: z.string() });\nconst payload = schema.parse(await res.json());`,
-    });
-  }
-
-  const godComponents: GodComponent[] = lineCount > 300 ? [
-    {
-      name: "Snippet.tsx",
-      lines: lineCount,
-      issues: [isRu ? "Файл превышает 300 строк: Cursor теряет контекст" : "File exceeds 300 lines"],
-      risk: "high",
-    }
-  ] : [];
-
-  const refactorSteps: RefactorStep[] = [
-    {
-      step: 1,
-      title: isRu ? "Хирургический распил сниппета" : "Surgical Snippet Decoupling",
-      estimatedTime: "10 минут",
-      targetTool: "Cursor Composer",
-      prompt: isRu
-        ? `Ты — Senior Refactoring Agent в Cursor. Декомпозируй предоставленный код на 2 независимых модуля: изолируй логику работы с данными и отдели презентационный UI.`
-        : `You are a Senior Refactoring Agent in Cursor. Decouple the provided code into 2 isolated modules: separate data logic and UI layer.`,
-    },
-    {
-      step: 2,
-      title: isRu ? "Замена 'as any' на валидацию Zod" : "Replace 'as any' with Zod Validation",
-      estimatedTime: "5 минут",
-      targetTool: "Cursor Cmd+K",
-      prompt: isRu
-        ? `Создай Zod-схему для входных и выходных данных этого компонента. Исключи использование 'any'.`
-        : `Create a Zod schema for input and output data payloads. Eliminate all 'any' casts.`,
-    }
-  ];
-
-  return {
-    title: "Analyzed Code Snippet",
-    repoName: "custom/snippet.tsx",
-    isRealRepo: false,
-    doomsdayScore,
-    timeToCollapse: isRu ? "9 коммитов до деградации" : "9 commits until degradation",
-    estimatedFixCost: Math.round((doomsdayScore * 45) / 100) * 100,
-    criticalBugsCount: antipatterns.filter((a) => a.severity === "CRITICAL").length,
-    spaghettiIndex: +(doomsdayScore / 10).toFixed(1),
-    ghostTypesCount: anyMatches * 4 + 4,
-    filesScanned: 1,
-    hasTests: false,
-    godComponents,
-    antipatterns,
-    refactorSteps,
-    diagnosticsSummary: isRu
-      ? `Анализ фрагмента завершен: ${lineCount} строк, обнаружено ${antipatterns.length} антипаттернов.`
-      : `Snippet analysis complete: ${lineCount} lines, ${antipatterns.length} antipatterns detected.`,
-  };
 }
 
 // ---------------------------------------------------------
@@ -709,7 +541,14 @@ function getCursorSaasPreset(isRu = true): AuditReport {
         title: isRu ? "Хирургический распил God-компонента app/page.tsx (2420 строк)" : "Surgical Decoupling of app/page.tsx (2420 LOC)",
         estimatedTime: "20 минут",
         targetTool: "Cursor Composer",
-        prompt: `Ты — Senior Refactoring Agent в Cursor. Безопасно разбей God-компонент 'app/page.tsx' на модули в '/components/landing/'. Сохрани стейт и интерфейсы без 'any'.`,
+        prompt: getCursorPrompt("app/page.tsx", 2420, isRu),
+      },
+      {
+        step: 2,
+        title: isRu ? "Архитектурный анализ Claude 3.7 Thinking" : "Claude 3.7 Thinking Architecture Audit",
+        estimatedTime: "15 минут",
+        targetTool: "Claude 3.7 Thinking",
+        prompt: getClaudePrompt("app/page.tsx", 2420, isRu),
       },
     ],
     diagnosticsSummary: isRu ? "Обнаружен монолит на 2420 строк, утечка ключей и 0 тестов." : "Found 2420-line monolith, key leak and 0 tests.",
@@ -755,7 +594,7 @@ function getBoltPreset(isRu = true): AuditReport {
         title: isRu ? "Разделение App.tsx на маршруты" : "Split App.tsx into separate routes",
         estimatedTime: "15 минут",
         targetTool: "Cursor Composer",
-        prompt: `Разбей 'src/App.tsx' на модули роутера и компонентов страниц.`,
+        prompt: getCursorPrompt("src/App.tsx", 1140, isRu),
       },
     ],
     diagnosticsSummary: isRu ? "Высокая связность экранов в App.tsx, отсутствие таймаутов сети." : "High screen coupling in App.tsx, missing network timeouts.",
@@ -801,7 +640,7 @@ function getCryptoBotPreset(isRu = true): AuditReport {
         title: isRu ? "Переход на BigInt/Decimal для балансов" : "Migrate balances to Decimal.js",
         estimatedTime: "15 минут",
         targetTool: "Cursor Composer",
-        prompt: `Замени все финансовые расчеты в 'bot.ts' на библиотеку decimal.js для предотвращения потери точности.`,
+        prompt: getCursorPrompt("bot.ts", 1850, isRu),
       },
     ],
     diagnosticsSummary: isRu ? "Критический риск потери средств из-за расчетов Number() и монолита в bot.ts." : "Critical risk of financial loss from floating point math in bot.ts.",

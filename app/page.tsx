@@ -153,7 +153,7 @@ export default function Home() {
 
       {auditReport && <AuditWorkbench report={auditReport} lang={lang} />}
 
-      <DoomsdayCalculator lang={lang} onRunAudit={runAudit} />
+      <DoomsdayCalculator lang={lang} isAuditing={isAuditing} onRunAudit={runAudit} />
 
       <FailureVectors lang={lang} />
 

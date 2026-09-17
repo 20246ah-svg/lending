@@ -51,27 +51,32 @@ export default function CliSection({ lang }: CliSectionProps) {
             <span>{copiedCli ? (lang === "ru" ? "Скопировано!" : "Copied!") : (lang === "ru" ? "Копировать" : "Copy")}</span>
           </button>
         </div>
-        <div className="p-5 font-mono text-xs text-zinc-300 space-y-2 bg-zinc-950 leading-relaxed overflow-x-auto">
-          <div className="flex items-center gap-2 text-emerald-400 font-bold">
-            <span>$</span>
-            <span className="text-white">npx vibedebt audit ./src</span>
+          <div className="p-5 font-mono text-xs text-zinc-300 space-y-2 bg-zinc-950 leading-relaxed overflow-x-auto">
+            <div className="text-zinc-500 text-[11px]">
+              {lang === "ru"
+                ? "# CLI в закрытом превью. Публикация в npm запланирована на Q4 2026."
+                : "# CLI in private preview. npm registry publication scheduled for Q4 2026."}
+            </div>
+            <div className="flex items-center gap-2 text-emerald-400 font-bold">
+              <span>$</span>
+              <span className="text-white">npx vibedebt-cli@preview audit ./src</span>
+            </div>
+            <div className="text-zinc-500 text-[11px]">
+              {lang === "ru" ? "→ Запуск локального статического анализатора кода..." : "→ Running local static code analyzer..."}
+            </div>
+            <div className="text-emerald-400 text-[11px]">
+              {lang === "ru" ? "✔ 48 файлов проверено за 290мс • 0 байт передано по сети" : "✔ 48 files scanned in 290ms • 0 bytes sent over network"}
+            </div>
+            <div className="text-amber-400 text-[11px]">
+              {lang === "ru" ? "⚠ Обнаружен God-файл: src/pages/Dashboard.tsx (620 LOC)" : "⚠ God-file detected: src/pages/Dashboard.tsx (620 LOC)"}
+            </div>
+            <div className="text-rose-400 text-[11px]">
+              {lang === "ru" ? "✖ 1 утечка токена обнаружена в src/lib/supabase.ts" : "✖ 1 secret leak found in src/lib/supabase.ts"}
+            </div>
+            <div className="text-emerald-300 text-[11px] pt-1 border-t border-zinc-800/60">
+              ✨ {lang === "ru" ? "Хирургические промпты сохранены в" : "Surgical Cursor prompts saved to"} <span className="underline">.vibedebt/prompts.md</span>
+            </div>
           </div>
-          <div className="text-zinc-500 text-[11px]">
-            {lang === "ru" ? "→ Запуск локального статического анализатора кода..." : "→ Running local static code analyzer..."}
-          </div>
-          <div className="text-emerald-400 text-[11px]">
-            {lang === "ru" ? "✔ 48 файлов проверено за 290мс • 0 байт передано по сети" : "✔ 48 files scanned in 290ms • 0 bytes sent over network"}
-          </div>
-          <div className="text-amber-400 text-[11px]">
-            {lang === "ru" ? "⚠ Обнаружен God-файл: src/pages/Dashboard.tsx (620 LOC)" : "⚠ God-file detected: src/pages/Dashboard.tsx (620 LOC)"}
-          </div>
-          <div className="text-rose-400 text-[11px]">
-            {lang === "ru" ? "✖ 1 утечка токена обнаружена в src/lib/supabase.ts" : "✖ 1 secret leak found in src/lib/supabase.ts"}
-          </div>
-          <div className="text-emerald-300 text-[11px] pt-1 border-t border-zinc-800/60">
-            ✨ {lang === "ru" ? "Хирургические промпты сохранены в" : "Surgical Cursor prompts saved to"} <span className="underline">.vibedebt/prompts.md</span>
-          </div>
-        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-2xl mx-auto text-xs font-mono text-zinc-400">

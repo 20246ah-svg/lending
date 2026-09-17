@@ -13,19 +13,27 @@ export default function WaitlistModal({ isOpen, onClose, lang }: WaitlistModalPr
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
 
+  const [loading, setLoading] = useState(false);
+
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim()) return;
+    if (!email.trim() || loading) return;
+
+    setLoading(true);
     try {
-      const existing = JSON.parse(localStorage.getItem("vibedebt_waitlist") || "[]");
-      existing.push({ email, date: new Date().toISOString() });
-      localStorage.setItem("vibedebt_waitlist", JSON.stringify(existing));
+      await fetch("/api/waitlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim() }),
+      });
     } catch {
-      // ignore
+      // fallback
+    } finally {
+      setLoading(false);
+      setSubmitted(true);
     }
-    setSubmitted(true);
   };
 
   return (
