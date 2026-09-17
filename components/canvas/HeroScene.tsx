@@ -1,18 +1,15 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef } from "react";
 import * as THREE from "three";
+import { useIsClient } from "@/lib/useIsClient";
 
 export default function HeroScene() {
   const mountRef = useRef<HTMLDivElement>(null);
-  const [mounted, setMounted] = useState(false);
+  const isClient = useIsClient();
 
   useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    if (!mounted) return;
+    if (!isClient) return;
     const container = mountRef.current;
     if (!container) return;
 
@@ -132,7 +129,7 @@ export default function HeroScene() {
 
     // Animation Loop
     let animationFrameId: number;
-    let clock = new THREE.Clock();
+    const clock = new THREE.Clock();
 
     const animate = () => {
       animationFrameId = requestAnimationFrame(animate);
@@ -176,7 +173,9 @@ export default function HeroScene() {
       lineGeo.dispose();
       lineMat.dispose();
     };
-  }, []);
+  }, [isClient]);
+
+  if (!isClient) return null;
 
   return (
     <div

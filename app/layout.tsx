@@ -2,9 +2,33 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "VibeDebt — Technical Debt Auditor & Doomsday Clock for AI-Built Startups",
+  title: "VibeDebt — Technical Debt Auditor & Doomsday Score for AI-Built Startups",
   description:
-    "Проверь технический долг проектов, созданных в Cursor, Bolt или Lovable. Реальный аудит GitHub репозиториев, счетчик Судного Дня и хирургические промпты для рефакторинга.",
+    "Instant technical debt audit and Doomsday fragility calculation for codebases built with Cursor, Bolt, or Lovable. Detect God-components, secret leaks, and get surgical refactor prompts.",
+  keywords: [
+    "VibeDebt",
+    "Technical Debt",
+    "Cursor AI",
+    "Doomsday Score",
+    "Code Auditor",
+    "Refactoring Prompts",
+    "AI Code Smells",
+    "Next.js",
+  ],
+  authors: [{ name: "VibeDebt Engineering" }],
+  openGraph: {
+    title: "VibeDebt — Technical Debt Auditor & Doomsday Score",
+    description: "Scan your AI codebase in 1 second. Detect critical failure points and get surgical prompts for Cursor.",
+    url: "https://vibedebt.dev",
+    siteName: "VibeDebt",
+    locale: "en_US",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "VibeDebt — Technical Debt Auditor & Doomsday Score",
+    description: "Audit your Cursor & Lovable codebase in 1 second. Get surgical refactor prompts.",
+  },
 };
 
 export default function RootLayout({
@@ -13,16 +37,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="ru" className="dark h-full antialiased" suppressHydrationWarning>
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
-          rel="stylesheet"
-        />
-      </head>
-      <body suppressHydrationWarning className="min-h-full flex flex-col bg-[#09090b] text-zinc-100 selection:bg-zinc-700 selection:text-white">
+    <html lang="en" className="dark h-full antialiased">
+      <body className="min-h-full flex flex-col bg-[#050508] text-zinc-100 font-sans selection:bg-emerald-500 selection:text-black">
         {children}
       </body>
     </html>

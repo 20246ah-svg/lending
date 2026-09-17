@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { CopyIcon, CheckIcon, SparklesIcon, ShieldAlertIcon, FileCodeIcon, TerminalIcon } from "@/components/icons";
+import { CopyIcon, CheckIcon, SparklesIcon, ShieldAlertIcon, FileCodeIcon } from "@/components/icons";
 
 interface CodeShowcaseProps {
   lang?: "ru" | "en";
@@ -139,7 +139,7 @@ export default function CodeShowcase({ lang = "ru" }: CodeShowcaseProps) {
             </div>
             <div className="flex gap-4 bg-rose-950/30 border-l-2 border-rose-500 pl-1 py-0.5 font-bold">
               <span className="w-6 text-right select-none text-rose-400">7</span>
-              <span>  process.env.<span className="text-rose-400 underline decoration-rose-500">SUPABASE_SERVICE_ROLE_KEY</span>! <span className="text-rose-400 font-normal">// ❌ Утечка master-ключа!</span></span>
+              <span>  process.env.<span className="text-rose-400 underline decoration-rose-500">SUPABASE_SERVICE_ROLE_KEY</span>! <span className="text-rose-400 font-normal">{"// ❌ Утечка master-ключа!"}</span></span>
             </div>
             <div className="flex gap-4 bg-rose-950/20 border-l-2 border-rose-500 pl-1 py-0.5">
               <span className="w-6 text-right select-none text-rose-400">8</span>
@@ -155,7 +155,7 @@ export default function CodeShowcase({ lang = "ru" }: CodeShowcaseProps) {
             </div>
             <div className="flex gap-4 text-amber-400/80">
               <span className="w-6 text-right select-none text-zinc-600">11</span>
-              <span>  <span className="text-zinc-500">// ⚠️ God-компонент: 2420 строк, 14 вызовов useState, биллинг и модалки</span></span>
+              <span>  <span className="text-zinc-500">{"// ⚠️ God-компонент: 2420 строк, 14 вызовов useState, биллинг и модалки"}</span></span>
             </div>
             <div className="flex gap-4 opacity-50">
               <span className="w-6 text-right select-none text-zinc-600">12</span>
@@ -198,11 +198,11 @@ export default function CodeShowcase({ lang = "ru" }: CodeShowcaseProps) {
             </div>
             <div className="flex gap-4 bg-amber-950/20 border-l-2 border-amber-500 pl-1 py-0.5 font-bold">
               <span className="w-6 text-right select-none text-amber-400">5</span>
-              <span>    <span className="text-blue-400">recalculatePricing</span>(filters); <span className="text-amber-400 font-normal">// ❌ Вызывает 20+ запросов в секунду</span></span>
+              <span>    <span className="text-blue-400">recalculatePricing</span>(filters); <span className="text-amber-400 font-normal">{"// ❌ Вызывает 20+ запросов в секунду"}</span></span>
             </div>
             <div className="flex gap-4 bg-amber-950/20 border-l-2 border-amber-500 pl-1 py-0.5">
               <span className="w-6 text-right select-none text-amber-400">6</span>
-              <span>  &#125;, [filters]); <span className="text-zinc-500">// ссылка на объект меняется каждый такт</span></span>
+              <span>  &#125;, [filters]); <span className="text-zinc-500">{"// ссылка на объект меняется каждый такт"}</span></span>
             </div>
           </div>
         )}

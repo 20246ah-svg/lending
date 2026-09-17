@@ -40,7 +40,7 @@ export default function KineticTicker({ lang = "ru", items }: KineticTickerProps
           <div key={idx} className="flex items-center mx-5 text-xs font-mono tracking-widest uppercase">
             <span className="text-zinc-500 mr-3">●</span>
             <span className="text-zinc-300 hover:text-emerald-400 transition-colors">{text}</span>
-            <span className="text-emerald-500/40 ml-4 font-bold">//</span>
+            <span className="text-emerald-500/40 ml-4 font-bold">{"//"}</span>
           </div>
         ))}
       </div>
