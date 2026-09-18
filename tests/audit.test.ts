@@ -7,6 +7,8 @@ import {
   formatTimeToCollapse,
   sortPackageJsonCandidates,
   analyzeSnippet,
+  isSafePublicUrl,
+  extractScriptUrls,
   LRUCache,
 } from "../lib/audit-core.ts";
 import { sanitizeProps, ALLOWED_EVENT_NAMES } from "../lib/analytics.ts";
@@ -195,5 +197,40 @@ describe("Analytics Telemetry & Sanitizer", () => {
     assert.ok(ALLOWED_EVENT_NAMES.includes("order_submitted"));
     assert.ok(ALLOWED_EVENT_NAMES.includes("waitlist_submitted"));
     assert.equal((ALLOWED_EVENT_NAMES as readonly string[]).includes("user_injected_evil_event"), false);
+  });
+});
+
+describe("Live App URL Scanner & SSRF Guard", () => {
+  test("allows legitimate public HTTPS websites", () => {
+    assert.equal(isSafePublicUrl("https://ui.shadcn.com"), true);
+    assert.equal(isSafePublicUrl("https://my-saas.lovable.app"), true);
+    assert.equal(isSafePublicUrl("http://example.com/test"), true);
+  });
+
+  test("blocks SSRF attack vectors and internal network ranges", () => {
+    assert.equal(isSafePublicUrl("http://localhost"), false);
+    assert.equal(isSafePublicUrl("http://127.0.0.1:3000"), false);
+    assert.equal(isSafePublicUrl("http://0.0.0.0"), false);
+    assert.equal(isSafePublicUrl("http://10.0.0.1/admin"), false);
+    assert.equal(isSafePublicUrl("http://192.168.1.1/secret"), false);
+    assert.equal(isSafePublicUrl("http://169.254.169.254/latest/meta-data"), false);
+    assert.equal(isSafePublicUrl("ftp://example.com"), false);
+    assert.equal(isSafePublicUrl("not-a-url"), false);
+  });
+
+  test("extracts script bundles from HTML and resolves relative URLs", () => {
+    const html = `
+      <html>
+        <head>
+          <script src="/_next/static/chunks/main.js"></script>
+          <script src="https://cdn.example.com/app.js"></script>
+          <script src="data:text/javascript;base64,..."></script>
+        </head>
+      </html>
+    `;
+    const scripts = extractScriptUrls(html, "https://my-saas.vercel.app");
+    assert.equal(scripts.includes("https://my-saas.vercel.app/_next/static/chunks/main.js"), true);
+    assert.equal(scripts.includes("https://cdn.example.com/app.js"), true);
+    assert.equal(scripts.some((s) => s.startsWith("data:")), false);
   });
 });

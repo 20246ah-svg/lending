@@ -66,8 +66,8 @@ export default function AuditWorkbench({ report, lang }: AuditWorkbenchProps) {
       const text = isRu
         ? `Мой проект набрал ${report.doomsdayScore}% в VibeDebt Doomsday Audit 💀 До критического сбоя: ${report.timeToCollapse}. Проверь свой вайбкод перед релизом:`
         : `My codebase scored ${report.doomsdayScore}% on VibeDebt Doomsday Audit 💀 Collapse horizon: ${report.timeToCollapse}. Test your Cursor/Lovable code:`;
-      const url = "https://vibedebt.dev";
-      const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
+      const shareUrl = `https://vibedebt.dev?score=${report.doomsdayScore}&target=${encodeURIComponent(report.repoName.slice(0, 40))}`;
+      const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(shareUrl)}`;
       trackEvent("share_clicked", {
         platform: "twitter",
         score: report.doomsdayScore,

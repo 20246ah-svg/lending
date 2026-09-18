@@ -330,3 +330,288 @@ export class SimpleRateLimiter {
     return true;
   }
 }
+
+/**
+ * Validates that a target URL is a safe public HTTP/HTTPS endpoint.
+ * Prevents SSRF attacks against loopback, link-local, and private RFC-1918 subnets.
+ */
+export function isSafePublicUrl(rawUrl: string): boolean {
+  try {
+    const parsed = new URL(rawUrl.trim());
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+    const hostname = parsed.hostname.toLowerCase();
+    if (!hostname || hostname === "localhost" || hostname === "0.0.0.0" || hostname === "::1") return false;
+    // Reject private and link-local IP addresses
+    if (/^127\./.test(hostname)) return false;
+    if (/^10\./.test(hostname)) return false;
+    if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname)) return false;
+    if (/^192\.168\./.test(hostname)) return false;
+    if (/^169\.254\./.test(hostname)) return false;
+    if (hostname.endsWith(".internal") || hostname.endsWith(".local")) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Extracts script bundle URLs from HTML markup and resolves them to absolute URLs.
+ */
+export function extractScriptUrls(html: string, baseUrl: string): string[] {
+  const urls: string[] = [];
+  const scriptRegex = /<script\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi;
+  let match;
+  while ((match = scriptRegex.exec(html)) !== null) {
+    const src = match[1];
+    if (!src || src.startsWith("data:")) continue;
+    try {
+      const resolved = new URL(src, baseUrl).toString();
+      if (!urls.includes(resolved)) {
+        urls.push(resolved);
+      }
+    } catch {
+      // ignore malformed URLs
+    }
+  }
+  return urls.slice(0, 6);
+}
+
+/**
+ * Performs a live bundle and security header inspection of a deployed web application.
+ */
+export async function analyzeLiveApp(liveUrl: string, isRu = true): Promise<AuditReport> {
+  const parsed = new URL(liveUrl);
+  const hostname = parsed.hostname;
+
+  // 1. Fetch main document
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+
+  let html = "";
+  const headersMap = new Map<string, string>();
+
+  try {
+    const res = await fetch(liveUrl, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (VibeDebt-Auditor/1.0; +https://vibedebt.dev)",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      },
+    });
+
+    res.headers.forEach((val, key) => headersMap.set(key.toLowerCase(), val));
+    html = await res.text();
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const antipatterns: Antipattern[] = [];
+  const godComponents: GodComponent[] = [];
+  let score = 25;
+  let criticalBugsCount = 0;
+
+  // 2. Check Security Headers
+  const hsts = headersMap.get("strict-transport-security");
+  const csp = headersMap.get("content-security-policy");
+  const xframe = headersMap.get("x-frame-options");
+  const wildcardCors = headersMap.get("access-control-allow-origin");
+
+  if (!hsts && parsed.protocol === "https:") {
+    score += 8;
+    antipatterns.push({
+      title: isRu ? "Отсутствует заголовок HSTS (Strict-Transport-Security)" : "Missing HSTS Header",
+      cwe: "CWE-319",
+      severity: "WARNING",
+      description: isRu
+        ? "Сайт доступен по HTTPS, но не запрещает откат соединения на небезопасный HTTP через HSTS."
+        : "Application allows cleartext HTTP downgrade due to missing HSTS response header.",
+      detectedIn: "HTTP Response Headers",
+      sampleBadCode: "// Headers: Strict-Transport-Security is missing",
+      sampleFix: "Strict-Transport-Security: max-age=63072000; includeSubDomains; preload",
+    });
+  }
+
+  if (!csp) {
+    score += 10;
+    antipatterns.push({
+      title: isRu ? "Отсутствует Content Security Policy (CSP)" : "Missing Content Security Policy (CSP)",
+      cwe: "CWE-1021",
+      severity: "HIGH",
+      description: isRu
+        ? "Браузер не ограничивает источники скриптов и фреймов, что повышает риск XSS и кликджекинга."
+        : "Missing CSP header exposes modern web application to cross-site scripting and unauthorized iframe injection.",
+      detectedIn: "HTTP Response Headers",
+      sampleBadCode: "// Headers: Content-Security-Policy is missing",
+      sampleFix: "Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline';",
+    });
+  }
+
+  if (wildcardCors === "*") {
+    score += 10;
+    antipatterns.push({
+      title: isRu ? "Небезопасный Wildcard CORS (Access-Control-Allow-Origin: *)" : "Wildcard CORS (*)",
+      cwe: "CWE-942",
+      severity: "HIGH",
+      description: isRu
+        ? "Сервер разрешает произвольным внешним сайтам читать ответы ваших API через браузер пользователя."
+        : "Wildcard Access-Control-Allow-Origin permits arbitrary domains to read client responses.",
+      detectedIn: "HTTP Response Headers",
+      sampleBadCode: "Access-Control-Allow-Origin: *",
+      sampleFix: `Access-Control-Allow-Origin: https://${hostname}`,
+    });
+  }
+
+  if (!xframe) {
+    score += 5;
+    antipatterns.push({
+      title: isRu ? "Отсутствует защита от кликджекинга (X-Frame-Options)" : "Missing X-Frame-Options",
+      cwe: "CWE-1021",
+      severity: "WARNING",
+      description: isRu
+        ? "Сайт может быть встроен в скрытый iframe стороннего сайта для манипуляции действиями пользователя."
+        : "Application can be embedded in arbitrary third-party iframes, exposing visitors to clickjacking.",
+      detectedIn: "HTTP Response Headers",
+      sampleBadCode: "// Headers: X-Frame-Options is missing",
+      sampleFix: "X-Frame-Options: DENY",
+    });
+  }
+
+  // 3. Extract and scan JS bundles
+  const scriptUrls = extractScriptUrls(html, liveUrl);
+  let hasSourceMapLeak = false;
+
+  const bundleResults = await Promise.allSettled(
+    scriptUrls.slice(0, 4).map(async (scriptUrl) => {
+      const scriptCtrl = new AbortController();
+      const scriptTimeout = setTimeout(() => scriptCtrl.abort(), 5000);
+      try {
+        const sRes = await fetch(scriptUrl, { signal: scriptCtrl.signal });
+        if (!sRes.ok) return null;
+        const code = await sRes.text();
+        const scriptName = scriptUrl.split("/").pop() || "bundle.js";
+
+        // Check if bundle is oversized (>350KB)
+        if (code.length > 350000) {
+          godComponents.push({
+            name: scriptName,
+            lines: Math.round(code.length / 40),
+            sizeBytes: code.length,
+            issues: [isRu ? "Монолитный бандл (>350 КБ)" : "Heavy client bundle (>350 KB)"],
+            risk: "medium",
+          });
+        }
+
+        // Check sourcemap
+        try {
+          const mapUrl = scriptUrl + ".map";
+          const mapRes = await fetch(mapUrl, { method: "HEAD", signal: scriptCtrl.signal });
+          if (mapRes.ok && mapRes.status === 200) {
+            hasSourceMapLeak = true;
+          }
+        } catch {
+          // safe
+        }
+
+        return { name: scriptName, code };
+      } finally {
+        clearTimeout(scriptTimeout);
+      }
+    })
+  );
+
+  for (const item of bundleResults) {
+    if (item.status !== "fulfilled" || !item.value) continue;
+    const { name, code } = item.value;
+
+    // Check Stripe live secret key in browser bundle
+    if (/sk_live_[a-zA-Z0-9]{24,}/.test(code)) {
+      criticalBugsCount++;
+      score += 35;
+      antipatterns.push({
+        title: isRu ? "Секретный ключ Stripe в клиентском бандле" : "Live Stripe Secret Key in Client Bundle",
+        cwe: "CWE-798",
+        severity: "CRITICAL",
+        description: isRu
+          ? `В клиентском JS-файле '${name}' обнаружен боевой ключ sk_live_... Любой посетитель может управлять платежами и балансом.`
+          : `Live Stripe secret key found in client bundle '${name}'. Anyone can issue refunds and manage balance.`,
+        detectedIn: name,
+        sampleBadCode: `const stripe = new Stripe("sk_live_51M...[EXPOSED IN CLIENT BUNDLE]");`,
+        sampleFix: `// Server-only:\nimport Stripe from "stripe";\nexport const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);`,
+      });
+    }
+
+    // Check Supabase Service Role Key
+    if (/SUPABASE_SERVICE_ROLE_KEY|service_role/i.test(code) && /eyJhbGciOi/i.test(code)) {
+      criticalBugsCount++;
+      score += 40;
+      antipatterns.push({
+        title: isRu ? "Master Service Role Key Supabase в бандле" : "Supabase Master Service Role Key in Bundle",
+        cwe: "CWE-798",
+        severity: "CRITICAL",
+        description: isRu
+          ? `Обнаружен мастер-токен Supabase с полным обходом Row Level Security прямо в скомпилированном браузере '${name}'.`
+          : `Master service_role JWT discovered in client JavaScript '${name}'. Bypasses all database RLS.`,
+        detectedIn: name,
+        sampleBadCode: `const supabase = createClient(url, "eyJhbGciOi...service_role");`,
+        sampleFix: `// Move all admin calls to Next.js Server Actions or Node API routes.`,
+      });
+    }
+  }
+
+  if (hasSourceMapLeak) {
+    score += 15;
+    antipatterns.push({
+      title: isRu ? "Публичные Source Maps в продакшне (*.js.map)" : "Public Source Maps Leaked (*.js.map)",
+      cwe: "CWE-540",
+      severity: "HIGH",
+      description: isRu
+        ? "Сайт отдает файлы sourcemaps, позволяя любому злоумышленнику выгрузить полный оригинальный TypeScript код со всеми комментариями."
+        : "Production server exposes .js.map source maps, allowing anyone to recreate the entire TypeScript source code.",
+      detectedIn: "Static Web Assets",
+      sampleBadCode: "// curl https://" + hostname + "/assets/index.js.map -> 200 OK (Full Source Code)",
+      sampleFix: "productionSourceMap: false // in next.config.js or vite.config.ts",
+    });
+  }
+
+  score = Math.min(Math.round(score), 98);
+  const timeToCollapse = formatTimeToCollapse(score, isRu);
+  const estimatedFixCost = Math.round(900 + (score / 100) * 3800 + criticalBugsCount * 800);
+
+  const refactorSteps: RefactorStep[] = [
+    {
+      step: 1,
+      title: isRu ? "Изоляция секретов в Server-Side Route Handlers" : "Isolate Secrets to Server-Side Routes",
+      estimatedTime: "15 минут",
+      targetTool: "Cursor Composer",
+      prompt: `Ты — Senior Security Engineer в Cursor Composer.\nПроведи аудит бандла приложения '${hostname}'.\n\nИнструкции:\n1. Убедись, что все приватные ключи (Stripe sk_live, Supabase service_role) находятся исключительно в серверных эндпоинтах (/api/... или 'use server').\n2. Проверь 'next.config.js' / 'vite.config.ts' и отключи генерацию sourcemaps для продакшн сборки (productionSourceMap: false).\n3. Добавь заголовки HSTS и Content-Security-Policy в middleware.`,
+    },
+    {
+      step: 2,
+      title: isRu ? "Глубокая ревизия RLS Supabase через Claude 3.7" : "Supabase RLS Deep Audit with Claude 3.7",
+      estimatedTime: "20 минут",
+      targetTool: "Claude 3.7 Thinking",
+      prompt: `Ты — Principal Cloud Architect в Claude 3.7 Thinking.\nПроанализируй базу данных проекта '${hostname}'.\n\nПлан проверки:\n1. Проверь все таблицы Supabase на наличие уязвимости USING (true).\n2. Напиши строгие SQL-политики RLS для разделения доступа между пользователями (auth.uid() = user_id).\n3. Настрой безопасную ротацию скомпрометированных ключей API.`,
+    },
+  ];
+
+  return {
+    title: isRu ? `Аудит веб-приложения: ${hostname}` : `Live App Audit: ${hostname}`,
+    repoName: `live://${hostname}`,
+    isRealRepo: false,
+    doomsdayScore: score,
+    timeToCollapse,
+    estimatedFixCost,
+    criticalBugsCount,
+    spaghettiIndex: Math.min(9.5, Math.round((score / 10) * 10) / 10),
+    ghostTypesCount: 0,
+    filesScanned: scriptUrls.length + 1,
+    hasTests: false,
+    primaryLanguage: "Production Web Bundle",
+    godComponents,
+    antipatterns,
+    refactorSteps,
+    diagnosticsSummary: isRu
+      ? `Проверено приложение ${hostname}: ${scriptUrls.length} скриптов, обнаружено ${criticalBugsCount} критических уязвимостей.`
+      : `Scanned ${hostname}: ${scriptUrls.length} bundles inspected, ${criticalBugsCount} critical vulnerabilities found.`,
+  };
+}

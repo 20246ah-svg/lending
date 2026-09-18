@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
-import { ZapIcon, GithubIcon, FileCodeIcon, SparklesIcon, AlertTriangleIcon } from "@/components/icons";
+import { ZapIcon, GithubIcon, GlobeIcon, FileCodeIcon, SparklesIcon, AlertTriangleIcon } from "@/components/icons";
 import CodeShowcase from "@/components/ui/CodeShowcase";
 import { i18n } from "@/lib/i18n";
 import { AuditRequestBody } from "@/lib/types";
@@ -53,8 +53,9 @@ export default function HeroSection({
   onLoadSample,
 }: HeroSectionProps) {
   const t = i18n[lang];
-  const [inputTab, setInputTab] = useState<"github" | "snippet" | "archetype">("github");
+  const [inputTab, setInputTab] = useState<"github" | "live" | "snippet" | "archetype">("github");
   const [githubUrl, setGithubUrl] = useState("https://github.com/shadcn-ui/ui");
+  const [liveUrl, setLiveUrl] = useState("https://ui.shadcn.com");
   const [snippetCode, setSnippetCode] = useState(SAMPLE_SNIPPET);
 
   useEffect(() => {
@@ -72,7 +73,7 @@ export default function HeroSection({
     }
   }, [lang]);
 
-  const handleSwitchTab = (tab: "github" | "snippet" | "archetype") => {
+  const handleSwitchTab = (tab: "github" | "live" | "snippet" | "archetype") => {
     setInputTab(tab);
     trackEvent("tab_switched", { tab });
   };
@@ -81,6 +82,12 @@ export default function HeroSection({
     if (!githubUrl.trim() || isAuditing) return;
     trackEvent("scan_started", { mode: "github", target: githubUrl.trim().slice(0, 80) });
     onRunAudit({ url: githubUrl.trim(), lang });
+  };
+
+  const handleStartLive = () => {
+    if (!liveUrl.trim() || isAuditing) return;
+    trackEvent("scan_started", { mode: "live", target: liveUrl.trim().slice(0, 80) });
+    onRunAudit({ liveUrl: liveUrl.trim(), lang });
   };
 
   const handleStartSnippet = () => {
@@ -124,7 +131,7 @@ export default function HeroSection({
         {/* INPUT TABS & WORKBENCH */}
         <div id="audit-tool" className="w-full max-w-2xl mb-8">
           {/* Mode Switcher */}
-          <div className="flex items-center justify-center gap-2 mb-3 font-mono text-xs">
+          <div className="flex flex-wrap items-center justify-center gap-2 mb-3 font-mono text-xs">
             <button
               onClick={() => handleSwitchTab("github")}
               className={`px-3 py-1.5 rounded-lg border transition cursor-pointer flex items-center gap-1.5 ${
@@ -135,6 +142,18 @@ export default function HeroSection({
             >
               <GithubIcon size={14} />
               <span>{t.tabGithub}</span>
+            </button>
+
+            <button
+              onClick={() => handleSwitchTab("live")}
+              className={`px-3 py-1.5 rounded-lg border transition cursor-pointer flex items-center gap-1.5 ${
+                inputTab === "live"
+                  ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-300 font-bold"
+                  : "bg-zinc-950/60 border-zinc-800 text-zinc-400 hover:text-zinc-200"
+              }`}
+            >
+              <GlobeIcon size={14} />
+              <span>{t.tabLive}</span>
             </button>
 
             <button
@@ -186,6 +205,34 @@ export default function HeroSection({
               >
                 <ZapIcon size={15} className="fill-zinc-950 text-zinc-950" />
                 <span>{isAuditing ? t.btnScanning : t.btnScan1Sec}</span>
+              </button>
+            </div>
+          )}
+
+          {/* TAB 2: LIVE WEB APP URL (CheckVibe / Bundle Scanner) */}
+          {inputTab === "live" && (
+            <div className="flex flex-col sm:flex-row items-stretch rounded-2xl border-2 border-cyan-500/80 bg-zinc-950/95 p-2 shadow-[0_0_50px_rgba(56,189,248,0.25)] backdrop-blur-xl gap-2">
+              <div className="flex items-center gap-3 px-3.5 flex-1">
+                <GlobeIcon size={18} className="text-cyan-400 shrink-0" />
+                <input
+                  type="text"
+                  value={liveUrl}
+                  onChange={(e) => setLiveUrl(e.target.value)}
+                  placeholder={t.livePlaceholder}
+                  className="w-full bg-transparent text-xs sm:text-sm font-mono text-white placeholder-zinc-500 focus:outline-none"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleStartLive();
+                  }}
+                />
+              </div>
+
+              <button
+                onClick={handleStartLive}
+                disabled={isAuditing}
+                className="px-6 py-3.5 rounded-xl bg-cyan-400 hover:bg-cyan-300 text-zinc-950 font-mono font-extrabold text-xs uppercase tracking-wider transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 shrink-0 shadow-lg shadow-cyan-400/20 active:scale-95"
+              >
+                <ZapIcon size={15} className="fill-zinc-950 text-zinc-950" />
+                <span>{isAuditing ? t.btnScanning : t.btnScanLive}</span>
               </button>
             </div>
           )}

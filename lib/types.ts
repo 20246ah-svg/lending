@@ -48,5 +48,6 @@ export interface AuditRequestBody {
   url?: string;
   snippet?: string;
   archetype?: string;
+  liveUrl?: string;
   lang?: "ru" | "en";
 }

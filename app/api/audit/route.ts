@@ -9,6 +9,8 @@ import {
   analyzeSnippet,
   getCursorPrompt,
   getClaudePrompt,
+  isSafePublicUrl,
+  analyzeLiveApp,
   LRUCache,
   SimpleRateLimiter,
 } from "@/lib/audit-core";
@@ -46,7 +48,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
-    const { url, snippet, archetype, lang = "ru" } = body;
+    const { url, snippet, archetype, liveUrl, lang = "ru" } = body;
     const isRu = lang === "ru";
 
     // 2. Archetype Presets handler
@@ -58,6 +60,42 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: true, data: getCryptoBotPreset(isRu) });
       }
       return NextResponse.json({ success: true, data: getCursorSaasPreset(isRu) });
+    }
+
+    // 3. Live Web App Bundle & Security Headers Scanner
+    if (liveUrl && typeof liveUrl === "string" && liveUrl.trim().length > 3) {
+      const target = liveUrl.trim();
+      if (!isSafePublicUrl(target)) {
+        return NextResponse.json(
+          {
+            error: isRu
+              ? "Некорректный или запрещенный адрес сайта (только публичные http/https URL)"
+              : "Invalid or restricted target URL (public http/https only)",
+          },
+          { status: 400 }
+        );
+      }
+
+      const cached = auditCache.get("live:" + target);
+      if (cached) {
+        return NextResponse.json({ success: true, data: cached });
+      }
+
+      try {
+        const report = await analyzeLiveApp(target, isRu);
+        auditCache.set("live:" + target, report);
+        return NextResponse.json({ success: true, data: report });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return NextResponse.json(
+          {
+            error: isRu
+              ? `Не удалось подключиться к сайту: ${msg}`
+              : `Failed to inspect live app: ${msg}`,
+          },
+          { status: 502 }
+        );
+      }
     }
 
     // 3. Snippet Analysis handler with size guard

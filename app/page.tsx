@@ -12,6 +12,7 @@ import CliSection from "@/components/landing/CliSection";
 import PricingSection from "@/components/landing/PricingSection";
 import Footer from "@/components/landing/Footer";
 import AuditOrderModal from "@/components/landing/AuditOrderModal";
+import DueDiligenceSampleModal from "@/components/landing/DueDiligenceSampleModal";
 import { AuditReport, AuditRequestBody } from "@/lib/types";
 import { trackEvent } from "@/lib/analytics";
 
@@ -90,6 +91,7 @@ export default function Home() {
   const [auditReport, setAuditReport] = useState<AuditReport | null>(null);
   const [orderModalOpen, setOrderModalOpen] = useState(false);
   const [orderTier, setOrderTier] = useState<"concierge" | "due_diligence">("due_diligence");
+  const [sampleModalOpen, setSampleModalOpen] = useState(false);
 
   const handleOpenOrder = (tier: "concierge" | "due_diligence") => {
     setOrderTier(tier);
@@ -100,12 +102,16 @@ export default function Home() {
     setIsAuditing(true);
     setErrorMessage(null);
     const startTime = Date.now();
-    const mode = payload.url ? "github" : payload.snippet ? "snippet" : "archetype";
+    const mode = payload.url ? "github" : payload.liveUrl ? "live" : payload.snippet ? "snippet" : "archetype";
 
     setAuditProgress(
       lang === "ru"
-        ? "Подключение к анализатору кода и инспекция зависимостей..."
-        : "Connecting to code analyzer & inspecting dependencies..."
+        ? payload.liveUrl
+          ? "Сканирование клиентских JS-бандлов, заголовков и конфигурации Supabase..."
+          : "Подключение к анализатору кода и инспекция зависимостей..."
+        : payload.liveUrl
+          ? "Inspecting client-side JS bundles, headers & Supabase configuration..."
+          : "Connecting to code analyzer & inspecting dependencies..."
     );
 
     try {
@@ -190,7 +196,7 @@ export default function Home() {
       <DueDiligenceSection
         lang={lang}
         onOpenOrder={handleOpenOrder}
-        onViewSample={handleLoadSample}
+        onViewSample={() => setSampleModalOpen(true)}
       />
 
       <CliSection lang={lang} />
@@ -204,6 +210,13 @@ export default function Home() {
         onClose={() => setOrderModalOpen(false)}
         lang={lang}
         initialTier={orderTier}
+      />
+
+      <DueDiligenceSampleModal
+        isOpen={sampleModalOpen}
+        onClose={() => setSampleModalOpen(false)}
+        lang={lang}
+        onOrderNow={() => handleOpenOrder("due_diligence")}
       />
     </div>
   );
