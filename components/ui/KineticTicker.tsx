@@ -14,18 +14,18 @@ const ITEMS_RU = [
   "ХИРУРГИЧЕСКИЕ ПРОМПТЫ ДЛЯ CURSOR",
   "ПРИВАТНЫЙ АУДИТ БЕЗ УТЕЧЕК ДАННЫХ",
   "ПРОВЕРКА ФАНТОМНЫХ NPM-ПАКЕТОВ",
-  "SAST-КОНТРОЛЬ CWE УЯЗВИМОСТЕЙ",
+  "АНАЛИЗ CWE УЯЗВИМОСТЕЙ",
   "АВТОТЕСТЫ VITEST ДЛЯ РЕГРЕССИЙ",
 ];
 
 const ITEMS_EN = [
   "DOOMSDAY RADAR",
-  "AST CODE GRAPH",
+  "AI CODE DECAY DETECTOR",
   "GOD-FILE SPLITTER",
   "SURGICAL CURSOR PROMPTS",
   "ZERO DATA EXFILTRATION",
-  "SUPPLY CHAIN PHANTOM SCAN",
-  "CWE SECURITY COMPLIANCE",
+  "PHANTOM NPM SCAN",
+  "CWE VULNERABILITY AUDIT",
   "VITEST HARNESS GENERATOR",
 ];
 
@@ -40,7 +40,7 @@ export default function KineticTicker({ lang = "ru", items }: KineticTickerProps
           <div key={idx} className="flex items-center mx-5 text-xs font-mono tracking-widest uppercase">
             <span className="text-zinc-500 mr-3">●</span>
             <span className="text-zinc-300 hover:text-emerald-400 transition-colors">{text}</span>
-            <span className="text-emerald-500/40 ml-4 font-bold">//</span>
+            <span className="text-emerald-500/40 ml-4 font-bold">{"//"}</span>
           </div>
         ))}
       </div>
