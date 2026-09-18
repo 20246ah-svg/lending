@@ -4,7 +4,6 @@ import {
   parseGitHubUrl,
   isIgnoredFile,
   stripCodeLiteralsAndComments,
-  calculateDoomsday,
   formatTimeToCollapse,
   sortPackageJsonCandidates,
   analyzeSnippet,
@@ -85,18 +84,14 @@ describe("stripCodeLiteralsAndComments (String & Comment Sanitizer)", () => {
   });
 });
 
-describe("Doomsday Calculator & Dynamic Horizon", () => {
-  test("healthy repository has low score and over 100 commits horizon", () => {
-    const res = calculateDoomsday(1000, 0, true, "clean");
-    assert.ok(res.score < 30);
-    const horizon = formatTimeToCollapse(res.score, true);
+describe("Dynamic Horizon Calculation", () => {
+  test("healthy repository has over 100 commits horizon", () => {
+    const horizon = formatTimeToCollapse(25, true);
     assert.equal(horizon.includes("Более 100 коммитов"), true);
   });
 
-  test("brittle repository has high score and urgent commits horizon", () => {
-    const res = calculateDoomsday(15000, 4, false, "mess");
-    assert.ok(res.score >= 75);
-    const horizon = formatTimeToCollapse(res.score, true);
+  test("brittle repository has urgent commits horizon", () => {
+    const horizon = formatTimeToCollapse(88, true);
     assert.equal(horizon.includes("коммитов до блокирующего сбоя"), true);
   });
 });

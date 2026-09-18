@@ -30,9 +30,6 @@ export default function Header({ lang, setLang }: HeaderProps) {
           <a href="#audit-tool" className="hover:text-emerald-400 transition-colors">
             {lang === "ru" ? "// АУДИТ" : "// AUDIT"}
           </a>
-          <a href="#calculator" className="hover:text-emerald-400 transition-colors">
-            {lang === "ru" ? "// КАЛЬКУЛЯТОР" : "// CALCULATOR"}
-          </a>
           <a href="#vectors" className="hover:text-emerald-400 transition-colors">
             {lang === "ru" ? "// ПРИЧИНЫ КРАХА" : "// VECTORS"}
           </a>

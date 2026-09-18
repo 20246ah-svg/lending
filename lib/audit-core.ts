@@ -90,36 +90,6 @@ export function formatTimeToCollapse(score: number, isRu = true): string {
 }
 
 /**
- * Formula for the interactive Doomsday Calculator.
- */
-export function calculateDoomsday(
-  lines: number,
-  godFiles: number,
-  hasTests: boolean,
-  dbState: "clean" | "medium" | "mess"
-): { score: number; days: number; emergencyCost: number; fragilityPercent: number } {
-  let score = 20;
-  score += (lines / 20000) * 35;
-  score += godFiles * 6;
-  if (!hasTests) score += 20;
-  if (dbState === "mess") score += 15;
-  else if (dbState === "medium") score += 8;
-
-  score = Math.min(Math.round(score), 99);
-  let days = Math.round(90 - (score / 100) * 85);
-  days = Math.max(days, 2);
-
-  const emergencyCost = Math.round((score / 100) * 6500 + godFiles * 450);
-
-  return {
-    score,
-    days,
-    emergencyCost,
-    fragilityPercent: Math.min(score + 4, 99),
-  };
-}
-
-/**
  * Finds package.json in tree, prioritizing root first, then shallowest paths.
  */
 export function sortPackageJsonCandidates(treePaths: string[]): string | undefined {

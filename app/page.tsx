@@ -6,7 +6,6 @@ import KineticTicker from "@/components/ui/KineticTicker";
 import Header from "@/components/landing/Header";
 import HeroSection from "@/components/landing/HeroSection";
 import AuditWorkbench from "@/components/landing/AuditWorkbench";
-import DoomsdayCalculator from "@/components/landing/DoomsdayCalculator";
 import FailureVectors from "@/components/landing/FailureVectors";
 import CliSection from "@/components/landing/CliSection";
 import PricingSection from "@/components/landing/PricingSection";
@@ -152,8 +151,6 @@ export default function Home() {
       <KineticTicker lang={lang} />
 
       {auditReport && <AuditWorkbench report={auditReport} lang={lang} />}
-
-      <DoomsdayCalculator lang={lang} isAuditing={isAuditing} onRunAudit={runAudit} />
 
       <FailureVectors lang={lang} />
 

@@ -10,6 +10,7 @@ import {
 } from "@/components/icons";
 import { AuditReport } from "@/lib/types";
 import { getCursorPrompt, getClaudePrompt } from "@/lib/audit-core";
+import RadarGauge from "@/components/ui/RadarGauge";
 
 interface AuditWorkbenchProps {
   report: AuditReport;
@@ -44,6 +45,7 @@ export default function AuditWorkbench({ report, lang }: AuditWorkbenchProps) {
 
   const mainFile = report.godComponents[0]?.name || "src/App.tsx";
   const mainLines = report.godComponents[0]?.lines || 450;
+  const daysToDisaster = Math.max(2, Math.round(90 - (report.doomsdayScore / 100) * 85));
 
   return (
     <section id="report-view" className="py-20 px-4 sm:px-8 max-w-6xl mx-auto z-10 relative">
@@ -73,53 +75,66 @@ export default function AuditWorkbench({ report, lang }: AuditWorkbenchProps) {
           </div>
         </div>
 
-        {/* Scoreboard Metrics */}
-        <div className="p-6 sm:p-8 grid grid-cols-2 md:grid-cols-4 gap-4 border-b border-zinc-800/80 bg-zinc-950/40">
-          <div className="p-4 rounded-xl border border-rose-500/20 bg-rose-500/5">
-            <div className="text-[10px] font-mono text-rose-400 uppercase tracking-wider mb-1">
-              Doomsday Score
-            </div>
-            <div className="text-3xl sm:text-4xl font-extrabold font-mono text-rose-400">
-              {report.doomsdayScore}%
-            </div>
-            <div className="text-[11px] text-zinc-500 font-mono mt-1">
-              {report.timeToCollapse}
-            </div>
+        {/* Real Data Visualizer: SVG Radar + Metrics Grid */}
+        <div className="p-6 sm:p-8 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center border-b border-zinc-800/80 bg-zinc-950/40">
+          {/* Radar HUD reflecting genuine audit calculation */}
+          <div className="lg:col-span-5 flex justify-center border-b lg:border-b-0 lg:border-r border-zinc-800/80 pb-6 lg:pb-0 lg:pr-6">
+            <RadarGauge
+              fragilityPercent={report.doomsdayScore}
+              daysToDisaster={daysToDisaster}
+              emergencyCost={report.estimatedFixCost}
+              lang={lang}
+            />
           </div>
 
-          <div className="p-4 rounded-xl border border-amber-500/20 bg-amber-500/5">
-            <div className="text-[10px] font-mono text-amber-400 uppercase tracking-wider mb-1">
-              {isRu ? "Критические уязвимости" : "Critical Vulnerabilities"}
+          {/* Key Metrics Grid */}
+          <div className="lg:col-span-7 grid grid-cols-2 gap-4">
+            <div className="p-4 rounded-xl border border-rose-500/20 bg-rose-500/5">
+              <div className="text-[10px] font-mono text-rose-400 uppercase tracking-wider mb-1">
+                Doomsday Score
+              </div>
+              <div className="text-3xl sm:text-4xl font-extrabold font-mono text-rose-400">
+                {report.doomsdayScore}%
+              </div>
+              <div className="text-[11px] text-zinc-400 font-mono mt-1">
+                {report.timeToCollapse}
+              </div>
             </div>
-            <div className="text-3xl sm:text-4xl font-extrabold font-mono text-amber-400">
-              {report.criticalBugsCount}
-            </div>
-            <div className="text-[11px] text-zinc-500 font-mono mt-1">
-              {isRu ? "Утечки ключей и петли" : "CWE Leaks & Loops"}
-            </div>
-          </div>
 
-          <div className="p-4 rounded-xl border border-purple-500/20 bg-purple-500/5">
-            <div className="text-[10px] font-mono text-purple-400 uppercase tracking-wider mb-1">
-              {isRu ? "God-компоненты" : "God Components"}
+            <div className="p-4 rounded-xl border border-amber-500/20 bg-amber-500/5">
+              <div className="text-[10px] font-mono text-amber-400 uppercase tracking-wider mb-1">
+                {isRu ? "Критические точки" : "Critical Points"}
+              </div>
+              <div className="text-3xl sm:text-4xl font-extrabold font-mono text-amber-400">
+                {report.criticalBugsCount}
+              </div>
+              <div className="text-[11px] text-zinc-400 font-mono mt-1">
+                {isRu ? "Утечки ключей и петли" : "CWE Leaks & Loops"}
+              </div>
             </div>
-            <div className="text-3xl sm:text-4xl font-extrabold font-mono text-purple-400">
-              {report.godComponents.length}
-            </div>
-            <div className="text-[11px] text-zinc-500 font-mono mt-1">
-              {isRu ? "файлы >300 строк" : ">300 LOC monoliths"}
-            </div>
-          </div>
 
-          <div className="p-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5">
-            <div className="text-[10px] font-mono text-emerald-400 uppercase tracking-wider mb-1">
-              {isRu ? "Оценка фикса сеньором" : "Estimated Fix Cost"}
+            <div className="p-4 rounded-xl border border-purple-500/20 bg-purple-500/5">
+              <div className="text-[10px] font-mono text-purple-400 uppercase tracking-wider mb-1">
+                {isRu ? "God-компоненты" : "God Components"}
+              </div>
+              <div className="text-3xl sm:text-4xl font-extrabold font-mono text-purple-400">
+                {report.godComponents.length}
+              </div>
+              <div className="text-[11px] text-zinc-400 font-mono mt-1">
+                {isRu ? "файлы >300 строк" : ">300 LOC monoliths"}
+              </div>
             </div>
-            <div className="text-3xl sm:text-4xl font-extrabold font-mono text-emerald-400">
-              ${formatNumber(report.estimatedFixCost)}
-            </div>
-            <div className="text-[11px] text-zinc-500 font-mono mt-1">
-              {isRu ? "Ставка экстренного найма" : "Contractor emergency rate"}
+
+            <div className="p-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5">
+              <div className="text-[10px] font-mono text-emerald-400 uppercase tracking-wider mb-1">
+                {isRu ? "Оценка фикса" : "Estimated Fix Cost"}
+              </div>
+              <div className="text-3xl sm:text-4xl font-extrabold font-mono text-emerald-400">
+                ${formatNumber(report.estimatedFixCost)}
+              </div>
+              <div className="text-[11px] text-zinc-400 font-mono mt-1">
+                {isRu ? "Ставка экстренного найма" : "Contractor emergency rate"}
+              </div>
             </div>
           </div>
         </div>
