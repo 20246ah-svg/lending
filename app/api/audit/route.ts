@@ -495,10 +495,10 @@ export async function POST(req: Request) {
         antipatterns,
         refactorSteps,
         diagnosticsSummary: isRu
-          ? `Просканировано ${realSourceFiles.length} файлов. Doomsday Score: ${doomsdayScore}%. ${
+          ? `Просканировано ${realSourceFiles.length} файлов. Doomsday Score: ${doomsdayScore}/100. ${
               hasTests ? "Автотесты присутствуют." : "Обнаружен разрыв в тестировании (0 тестов)."
             }`
-          : `Scanned ${realSourceFiles.length} files. Doomsday Score: ${doomsdayScore}%. ${
+          : `Scanned ${realSourceFiles.length} files. Doomsday Score: ${doomsdayScore}/100. ${
               hasTests ? "Tests present." : "Testing gap identified."
             }`,
       };

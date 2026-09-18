@@ -491,7 +491,7 @@ export async function analyzeLiveApp(liveUrl: string, isRu = true): Promise<Audi
     score += 10;
     antipatterns.push({
       title: isRu ? "Отсутствует Content Security Policy (CSP)" : "Missing Content Security Policy (CSP)",
-      cwe: "CWE-1021",
+      cwe: "SECURITY",
       severity: "HIGH",
       description: isRu
         ? "Браузер не ограничивает источники скриптов и фреймов, что повышает риск XSS и кликджекинга."

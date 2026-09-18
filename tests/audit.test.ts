@@ -239,3 +239,96 @@ describe("Live App URL Scanner & SSRF Guard", () => {
     assert.equal(scripts.some((s) => s.startsWith("data:")), false);
   });
 });
+
+describe("Storage (JSONL persistence)", () => {
+  test("append + read roundtrip persists records to disk", async () => {
+    const os = await import("node:os");
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vdb-data-"));
+    process.env.VIBEDEBT_DATA_DIR = tmp;
+    try {
+      const { appendRecord, readRecords } = await import("../lib/storage.ts");
+      appendRecord("orders", { id: "ord_1", email: "a@b.c" });
+      appendRecord("orders", { id: "ord_2", email: "d@e.f" });
+      const recs = readRecords<{ id: string }>("orders");
+      assert.equal(recs.length, 2);
+      assert.equal(recs[0].id, "ord_1");
+      assert.equal(recs[1].id, "ord_2");
+      assert.ok(fs.existsSync(path.join(tmp, "orders.jsonl")));
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+      delete process.env.VIBEDEBT_DATA_DIR;
+    }
+  });
+
+  test("readRecords returns empty array for unknown collection", async () => {
+    const os = await import("node:os");
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vdb-data-"));
+    process.env.VIBEDEBT_DATA_DIR = tmp;
+    try {
+      const { readRecords } = await import("../lib/storage.ts");
+      assert.deepEqual(readRecords("nope"), []);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+      delete process.env.VIBEDEBT_DATA_DIR;
+    }
+  });
+});
+
+describe("Local CLI (bin/cli.mjs)", () => {
+  // Fake secrets are split in source and joined at runtime so the fixture
+  // files contain a full token (for the scanner) while this file itself does
+  // not trip secret-scanning push protection.
+  const JWT_PARTS = [
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
+    "eyJyb2xlIjoic2VydmljZV9yb2xlIiwic3ViIjoiYXVuYyJ9",
+    "deadbeefdeadbeef",
+  ];
+  const STRIPE_KEY_PARTS = ["sk_live_", "51M", "abcdEFGHIJ1234567890xy"];
+
+  test("detects real leaked keys and god files, writes prompt artifact", async () => {
+    const os = await import("node:os");
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vdb-cli-"));
+    try {
+      fs.writeFileSync(
+        path.join(tmp, "leak.ts"),
+        `const jwt = "${JWT_PARTS.join(".")}";\nconst stripe = new Stripe("${STRIPE_KEY_PARTS.join("")}");\n`
+      );
+      fs.writeFileSync(
+        path.join(tmp, "god.ts"),
+        Array.from({ length: 320 }, (_, i) => `const x${i} = ${i};`).join("\n")
+      );
+      const { runCli } = await import("../bin/cli.mjs");
+      const res = runCli(tmp);
+      assert.equal(res.secretLeaksCount, 2);
+      assert.equal(res.godFilesCount, 1);
+      assert.ok(fs.existsSync(path.join(tmp, ".vibedebt", "prompts.md")));
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("does NOT flag the variable NAME service_role (regression: false-positive bomb)", async () => {
+    const os = await import("node:os");
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vdb-cli-"));
+    try {
+      // Legitimate server-side usage: env reference + role string. Not a leak.
+      fs.writeFileSync(
+        path.join(tmp, "server.ts"),
+        'const role: "service_role" = "service_role";\nexport const key = process.env.SUPABASE_SERVICE_ROLE_KEY;\nexport default role;\n'
+      );
+      const { runCli } = await import("../bin/cli.mjs");
+      const res = runCli(tmp);
+      assert.equal(res.secretLeaksCount, 0);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});

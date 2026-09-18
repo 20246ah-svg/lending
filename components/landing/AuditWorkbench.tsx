@@ -46,7 +46,7 @@ export default function AuditWorkbench({ report, lang }: AuditWorkbenchProps) {
 
   const copyBadgeMarkdown = () => {
     try {
-      const badge = `[![VibeDebt Doomsday](https://img.shields.io/badge/VibeDebt_Doomsday-${report.doomsdayScore}%25_${
+      const badge = `[![VibeDebt Doomsday](https://img.shields.io/badge/VibeDebt_Doomsday-${report.doomsdayScore}%2F100_${
         report.doomsdayScore > 75 ? "CRITICAL" : "ELEVATED"
       }-f43f5e?style=flat-square&logo=github)](https://github.com/20246ah-svg/lending)`;
       navigator.clipboard.writeText(badge);
@@ -64,8 +64,8 @@ export default function AuditWorkbench({ report, lang }: AuditWorkbenchProps) {
   const handleShareTwitter = () => {
     try {
       const text = isRu
-        ? `Мой проект набрал ${report.doomsdayScore}% в VibeDebt Doomsday Audit 💀 До критического сбоя: ${report.timeToCollapse}. Проверь свой вайбкод перед релизом:`
-        : `My codebase scored ${report.doomsdayScore}% on VibeDebt Doomsday Audit 💀 Collapse horizon: ${report.timeToCollapse}. Test your Cursor/Lovable code:`;
+        ? `Мой проект набрал ${report.doomsdayScore}/100 в VibeDebt Doomsday Audit 💀 До критического сбоя: ${report.timeToCollapse}. Проверь свой вайбкод перед релизом:`
+        : `My codebase scored ${report.doomsdayScore}/100 on VibeDebt Doomsday Audit 💀 Collapse horizon: ${report.timeToCollapse}. Test your Cursor/Lovable code:`;
       const shareUrl = `https://vibedebt.dev?score=${report.doomsdayScore}&target=${encodeURIComponent(report.repoName.slice(0, 40))}`;
       const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(shareUrl)}`;
       trackEvent("share_clicked", {
@@ -138,7 +138,8 @@ export default function AuditWorkbench({ report, lang }: AuditWorkbenchProps) {
                 Doomsday Score
               </div>
               <div className="text-3xl sm:text-4xl font-extrabold font-mono text-rose-400">
-                {report.doomsdayScore}%
+                {report.doomsdayScore}
+                <span className="text-lg font-normal text-zinc-500">/100</span>
               </div>
               <div className="text-[11px] text-zinc-400 font-mono mt-1">
                 {report.timeToCollapse}
@@ -153,7 +154,7 @@ export default function AuditWorkbench({ report, lang }: AuditWorkbenchProps) {
                 {report.criticalBugsCount}
               </div>
               <div className="text-[11px] text-zinc-400 font-mono mt-1">
-                {isRu ? "Утечки ключей и петли" : "CWE Leaks & Loops"}
+                {isRu ? "Утечки ключей и петли" : "Secrets & Loops"}
               </div>
             </div>
 
@@ -171,13 +172,13 @@ export default function AuditWorkbench({ report, lang }: AuditWorkbenchProps) {
 
             <div className="p-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5">
               <div className="text-[10px] font-mono text-emerald-400 uppercase tracking-wider mb-1">
-                {isRu ? "Оценка фикса" : "Estimated Fix Cost"}
+                {isRu ? "Эвристика стабилизации" : "Stabilization estimate"}
               </div>
               <div className="text-3xl sm:text-4xl font-extrabold font-mono text-emerald-400">
                 ${formatNumber(report.estimatedFixCost)}
               </div>
               <div className="text-[11px] text-zinc-400 font-mono mt-1">
-                {isRu ? "Ставка экстренного найма" : "Contractor emergency rate"}
+                {isRu ? "эвристика, не смета" : "heuristic, not a quote"}
               </div>
             </div>
           </div>

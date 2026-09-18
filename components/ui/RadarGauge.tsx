@@ -117,7 +117,7 @@ export default function RadarGauge({
 
           <div className="text-4xl font-extrabold font-mono tracking-tighter text-white">
             {fragilityPercent}
-            <span className="text-xl font-normal text-zinc-500">%</span>
+            <span className="text-xl font-normal text-zinc-500">/100</span>
           </div>
 
           <div className="text-[11px] font-mono text-zinc-400 mt-1">
@@ -144,7 +144,7 @@ export default function RadarGauge({
         </div>
         <div className="p-2.5 rounded-lg border border-zinc-800/80 bg-zinc-900/40 text-center">
           <div className="text-[10px] text-zinc-500 uppercase">
-            {lang === "ru" ? "Экстренный фикс" : "Contractor rate"}
+            {lang === "ru" ? "Эвристика фикса" : "Heuristic estimate"}
           </div>
           <div className="text-sm font-bold text-emerald-400 mt-0.5">
             ${emergencyCost.toLocaleString()}

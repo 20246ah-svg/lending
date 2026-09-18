@@ -15,9 +15,9 @@ export default function CliSection({ lang }: CliSectionProps) {
 
   const handleCopyCli = () => {
     try {
-      navigator.clipboard.writeText("npx vibedebt-cli@preview audit ./src");
+      navigator.clipboard.writeText("node bin/cli.mjs ./src");
       setCopiedCli(true);
-      trackEvent("cli_copy_clicked", { command: "npx vibedebt-cli@preview" });
+      trackEvent("cli_copy_clicked", { command: "node bin/cli.mjs" });
       setTimeout(() => setCopiedCli(false), 2000);
     } catch {
       // safe
@@ -47,7 +47,7 @@ export default function CliSection({ lang }: CliSectionProps) {
             <span className="w-2.5 h-2.5 rounded-full bg-rose-500/80 inline-block" />
             <span className="w-2.5 h-2.5 rounded-full bg-amber-500/80 inline-block" />
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/80 inline-block" />
-            <span className="ml-2 text-zinc-500">zsh — npx vibedebt-cli (Preview)</span>
+            <span className="ml-2 text-zinc-500">zsh — node bin/cli.mjs (local)</span>
           </div>
           <button
             onClick={handleCopyCli}
@@ -60,8 +60,8 @@ export default function CliSection({ lang }: CliSectionProps) {
           <div className="p-5 font-mono text-xs text-zinc-300 space-y-2 bg-zinc-950 leading-relaxed overflow-x-auto">
             <div className="text-zinc-500 text-[11px]">
               {lang === "ru"
-                ? "# CLI в закрытом превью. Публикация в npm запланирована на Q4 2026."
-                : "# CLI in private preview. npm registry publication scheduled for Q4 2026."}
+                ? "# Локальный CLI из репозитория. Публикация в npm-реестр — скоро."
+                : "# Local CLI from the repository. npm registry publication — coming soon."}
             </div>
             <div className="flex items-center gap-2 text-emerald-400 font-bold">
               <span>$</span>

@@ -34,7 +34,9 @@ const CODE_EXTENSIONS = new Set([
 
 const SECRET_PATTERNS = [
   { name: "Stripe Live Secret Key", regex: /sk_live_[a-zA-Z0-9]{24,}/, severity: "CRITICAL" },
-  { name: "Supabase Service Role Key", regex: /SUPABASE_SERVICE_ROLE_KEY|service_role/i, severity: "CRITICAL" },
+  // Match the actual JWT shape, not the variable NAME — `process.env.SUPABASE_SERVICE_ROLE_KEY`
+  // in server code is the CORRECT usage and must not be flagged.
+  { name: "Hardcoded JWT (possible Supabase service_role key)", regex: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}\b/, severity: "CRITICAL" },
   { name: "AWS Access Key ID", regex: /AKIA[0-9A-Z]{16}/, severity: "HIGH" },
   { name: "SendGrid API Key", regex: /SG\.[a-zA-Z0-9_-]{22}\.[a-zA-Z0-9_-]{43}/, severity: "HIGH" },
 ];
@@ -128,11 +130,11 @@ export function runCli(targetDir = ".") {
   console.log(`\x1b[32m✔ Scanned ${files.length} source files (${totalLines.toLocaleString()} LOC) in ${durationMs}ms\x1b[0m`);
 
   if (score >= 75) {
-    console.log(`\x1b[41m\x1b[37m DOOMSDAY SCORE: ${score}% (CRITICAL ARCHITECTURAL RISK) \x1b[0m`);
+    console.log(`\x1b[41m\x1b[37m DOOMSDAY SCORE: ${score}/100 (CRITICAL ARCHITECTURAL RISK) \x1b[0m`);
   } else if (score >= 50) {
-    console.log(`\x1b[43m\x1b[30m DOOMSDAY SCORE: ${score}% (ELEVATED TECH DEBT) \x1b[0m`);
+    console.log(`\x1b[43m\x1b[30m DOOMSDAY SCORE: ${score}/100 (ELEVATED TECH DEBT) \x1b[0m`);
   } else {
-    console.log(`\x1b[42m\x1b[30m DOOMSDAY SCORE: ${score}% (STABLE ARCHITECTURE) \x1b[0m`);
+    console.log(`\x1b[42m\x1b[30m DOOMSDAY SCORE: ${score}/100 (STABLE ARCHITECTURE) \x1b[0m`);
   }
 
   console.log(`\x1b[90m------------------------------------------------------------\x1b[0m`);
@@ -194,8 +196,21 @@ export function runCli(targetDir = ".") {
   return { score, godFilesCount: godFiles.length, secretLeaksCount: secretLeaks.length };
 }
 
-// If executed directly from command line
-if (import.meta.url === `file://${process.argv[1]}`) {
-  const target = process.argv[2] || ".";
-  runCli(target);
+// If executed directly from command line.
+// Compare realpaths so the guard also works when invoked through a symlink
+// (npm bin shims, `npx`, `npm link`) — argv[1] may be a symlink while
+// import.meta.url is the resolved real path.
+if (process.argv[1]) {
+  let isDirectRun = false;
+  try {
+    const { realpathSync } = await import("node:fs");
+    const { pathToFileURL } = await import("node:url");
+    isDirectRun = pathToFileURL(realpathSync(process.argv[1])).href === import.meta.url;
+  } catch {
+    isDirectRun = false;
+  }
+  if (isDirectRun) {
+    const target = process.argv[2] || ".";
+    runCli(target);
+  }
 }
