@@ -36,6 +36,12 @@ yarn-error.log*
 # vercel
 .vercel
 
+# runtime data persistence
+/data
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local CLI artifacts
+/.vibedebt/
