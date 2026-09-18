@@ -11,6 +11,7 @@ import {
 import { AuditReport } from "@/lib/types";
 import { getCursorPrompt, getClaudePrompt } from "@/lib/audit-core";
 import RadarGauge from "@/components/ui/RadarGauge";
+import { trackEvent } from "@/lib/analytics";
 
 interface AuditWorkbenchProps {
   report: AuditReport;
@@ -29,18 +30,35 @@ export default function AuditWorkbench({ report, lang }: AuditWorkbenchProps) {
   const [targetAiTool, setTargetAiTool] = useState<"cursor" | "claude">("cursor");
 
   const copyPrompt = (text: string, idx: number) => {
-    navigator.clipboard.writeText(text);
-    setCopiedPromptIdx(idx);
-    setTimeout(() => setCopiedPromptIdx(null), 2000);
+    try {
+      navigator.clipboard.writeText(text);
+      setCopiedPromptIdx(idx);
+      trackEvent("prompt_copied", {
+        tool: idx === 0 ? "cursor" : "claude",
+        repo: report.repoName.slice(0, 40),
+        step: idx + 1,
+      });
+      setTimeout(() => setCopiedPromptIdx(null), 2000);
+    } catch {
+      // safe
+    }
   };
 
   const copyBadgeMarkdown = () => {
-    const badge = `[![VibeDebt Doomsday](https://img.shields.io/badge/VibeDebt_Doomsday-${report.doomsdayScore}%25_${
-      report.doomsdayScore > 75 ? "CRITICAL" : "ELEVATED"
-    }-f43f5e?style=flat-square&logo=github)](https://github.com/20246ah-svg/lending)`;
-    navigator.clipboard.writeText(badge);
-    setCopiedBadge(true);
-    setTimeout(() => setCopiedBadge(false), 2000);
+    try {
+      const badge = `[![VibeDebt Doomsday](https://img.shields.io/badge/VibeDebt_Doomsday-${report.doomsdayScore}%25_${
+        report.doomsdayScore > 75 ? "CRITICAL" : "ELEVATED"
+      }-f43f5e?style=flat-square&logo=github)](https://github.com/20246ah-svg/lending)`;
+      navigator.clipboard.writeText(badge);
+      setCopiedBadge(true);
+      trackEvent("badge_copied", {
+        repo: report.repoName.slice(0, 40),
+        score: report.doomsdayScore,
+      });
+      setTimeout(() => setCopiedBadge(false), 2000);
+    } catch {
+      // safe
+    }
   };
 
   const mainFile = report.godComponents[0]?.name || "src/App.tsx";

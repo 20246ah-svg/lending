@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { TerminalIcon, CheckIcon, CopyIcon } from "@/components/icons";
 import { i18n } from "@/lib/i18n";
+import { trackEvent } from "@/lib/analytics";
 
 interface CliSectionProps {
   lang: "ru" | "en";
@@ -13,9 +14,14 @@ export default function CliSection({ lang }: CliSectionProps) {
   const [copiedCli, setCopiedCli] = useState(false);
 
   const handleCopyCli = () => {
-    navigator.clipboard.writeText("npx vibedebt audit ./src");
-    setCopiedCli(true);
-    setTimeout(() => setCopiedCli(false), 2000);
+    try {
+      navigator.clipboard.writeText("npx vibedebt-cli@preview audit ./src");
+      setCopiedCli(true);
+      trackEvent("cli_copy_clicked", { command: "npx vibedebt-cli@preview" });
+      setTimeout(() => setCopiedCli(false), 2000);
+    } catch {
+      // safe
+    }
   };
 
   return (

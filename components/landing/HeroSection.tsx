@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { ZapIcon, GithubIcon, FileCodeIcon, SparklesIcon, AlertTriangleIcon } from "@/components/icons";
 import CodeShowcase from "@/components/ui/CodeShowcase";
 import { i18n } from "@/lib/i18n";
 import { AuditRequestBody } from "@/lib/types";
+import { trackEvent } from "@/lib/analytics";
 
 const HeroScene = dynamic(() => import("@/components/canvas/HeroScene"), {
   ssr: false,
@@ -56,18 +57,42 @@ export default function HeroSection({
   const [githubUrl, setGithubUrl] = useState("https://github.com/shadcn-ui/ui");
   const [snippetCode, setSnippetCode] = useState(SAMPLE_SNIPPET);
 
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      trackEvent("landed", {
+        lang,
+        referrer: document.referrer || "direct",
+        utm_source: params.get("utm_source") || "none",
+        utm_medium: params.get("utm_medium") || "none",
+        utm_campaign: params.get("utm_campaign") || "none",
+      });
+    } catch {
+      // safe
+    }
+  }, [lang]);
+
+  const handleSwitchTab = (tab: "github" | "snippet" | "archetype") => {
+    setInputTab(tab);
+    trackEvent("tab_switched", { tab });
+  };
+
   const handleStartGithub = () => {
     if (!githubUrl.trim() || isAuditing) return;
+    trackEvent("scan_started", { mode: "github", target: githubUrl.trim().slice(0, 80) });
     onRunAudit({ url: githubUrl.trim(), lang });
   };
 
   const handleStartSnippet = () => {
     if (!snippetCode.trim() || isAuditing) return;
+    const lines = snippetCode.split("\n").length;
+    trackEvent("scan_started", { mode: "snippet", lines });
     onRunAudit({ snippet: snippetCode.trim(), lang });
   };
 
   const handleStartArchetype = (archetype: string) => {
     if (isAuditing) return;
+    trackEvent("scan_started", { mode: "archetype", target: archetype });
     onRunAudit({ archetype, lang });
   };
 
@@ -101,7 +126,7 @@ export default function HeroSection({
           {/* Mode Switcher */}
           <div className="flex items-center justify-center gap-2 mb-3 font-mono text-xs">
             <button
-              onClick={() => setInputTab("github")}
+              onClick={() => handleSwitchTab("github")}
               className={`px-3 py-1.5 rounded-lg border transition cursor-pointer flex items-center gap-1.5 ${
                 inputTab === "github"
                   ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-300 font-bold"
@@ -113,7 +138,7 @@ export default function HeroSection({
             </button>
 
             <button
-              onClick={() => setInputTab("snippet")}
+              onClick={() => handleSwitchTab("snippet")}
               className={`px-3 py-1.5 rounded-lg border transition cursor-pointer flex items-center gap-1.5 ${
                 inputTab === "snippet"
                   ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-300 font-bold"
@@ -125,7 +150,7 @@ export default function HeroSection({
             </button>
 
             <button
-              onClick={() => setInputTab("archetype")}
+              onClick={() => handleSwitchTab("archetype")}
               className={`px-3 py-1.5 rounded-lg border transition cursor-pointer flex items-center gap-1.5 ${
                 inputTab === "archetype"
                   ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-300 font-bold"
@@ -265,7 +290,10 @@ export default function HeroSection({
             <span className="text-zinc-600">•</span>
 
             <button
-              onClick={onLoadSample}
+              onClick={() => {
+                trackEvent("sample_report_loaded", { lang });
+                onLoadSample();
+              }}
               className="text-emerald-400 hover:text-emerald-300 underline underline-offset-4 cursor-pointer"
             >
               {t.viewSample}

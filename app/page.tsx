@@ -11,6 +11,7 @@ import CliSection from "@/components/landing/CliSection";
 import PricingSection from "@/components/landing/PricingSection";
 import Footer from "@/components/landing/Footer";
 import { AuditReport, AuditRequestBody } from "@/lib/types";
+import { trackEvent } from "@/lib/analytics";
 
 const SAMPLE_DEMO_REPORT: AuditReport = {
   title: "AI Micro-SaaS (Cursor + Claude 3.7)",
@@ -89,6 +90,9 @@ export default function Home() {
   const runAudit = async (payload: AuditRequestBody) => {
     setIsAuditing(true);
     setErrorMessage(null);
+    const startTime = Date.now();
+    const mode = payload.url ? "github" : payload.snippet ? "snippet" : "archetype";
+
     setAuditProgress(
       lang === "ru"
         ? "Подключение к анализатору кода и инспекция зависимостей..."
@@ -103,21 +107,41 @@ export default function Home() {
       });
 
       const json = await res.json();
+      const elapsed = Date.now() - startTime;
+
       if (!res.ok || json.error) {
-        setErrorMessage(json.error || (lang === "ru" ? "Не удалось завершить аудит." : "Audit failed."));
+        const err = json.error || (lang === "ru" ? "Не удалось завершить аудит." : "Audit failed.");
+        setErrorMessage(err);
+        trackEvent("scan_failed", {
+          mode,
+          error: String(err).slice(0, 80),
+          duration_ms: elapsed,
+        });
       } else if (json.data) {
         setAuditReport(json.data);
+        trackEvent("scan_completed", {
+          mode,
+          score: json.data.doomsdayScore,
+          critical: json.data.criticalBugsCount,
+          is_real: Boolean(json.data.isRealRepo),
+          duration_ms: elapsed,
+        });
         setTimeout(() => {
           const el = document.getElementById("report-view");
           el?.scrollIntoView({ behavior: "smooth" });
         }, 150);
       }
     } catch {
-      setErrorMessage(
-        lang === "ru"
-          ? "Ошибка соединения при обращении к серверу аудита."
-          : "Network connection error reaching audit engine."
-      );
+      const elapsed = Date.now() - startTime;
+      const err = lang === "ru"
+        ? "Ошибка соединения при обращении к серверу аудита."
+        : "Network connection error reaching audit engine.";
+      setErrorMessage(err);
+      trackEvent("scan_failed", {
+        mode,
+        error: "network_error",
+        duration_ms: elapsed,
+      });
     } finally {
       setIsAuditing(false);
       setAuditProgress("");

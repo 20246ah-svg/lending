@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { CheckIcon, XCircleIcon, SparklesIcon } from "@/components/icons";
+import { trackEvent } from "@/lib/analytics";
 
 interface WaitlistModalProps {
   isOpen: boolean;
@@ -12,8 +13,13 @@ interface WaitlistModalProps {
 export default function WaitlistModal({ isOpen, onClose, lang }: WaitlistModalProps) {
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
-
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      trackEvent("waitlist_opened", { lang });
+    }
+  }, [isOpen, lang]);
 
   if (!isOpen) return null;
 
@@ -22,12 +28,15 @@ export default function WaitlistModal({ isOpen, onClose, lang }: WaitlistModalPr
     if (!email.trim() || loading) return;
 
     setLoading(true);
+    const domain = email.includes("@") ? email.split("@")[1]?.slice(0, 40) : "unknown";
+
     try {
       await fetch("/api/waitlist", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim() }),
       });
+      trackEvent("waitlist_submitted", { domain });
     } catch {
       // fallback
     } finally {

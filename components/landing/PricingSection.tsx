@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import TiltCard from "@/components/ui/TiltCard";
 import WaitlistModal from "@/components/landing/WaitlistModal";
 import { i18n } from "@/lib/i18n";
+import { trackEvent } from "@/lib/analytics";
 
 interface PricingSectionProps {
   lang: "ru" | "en";
@@ -66,6 +67,7 @@ export default function PricingSection({ lang }: PricingSectionProps) {
           </div>
           <a
             href="#audit-tool"
+            onClick={() => trackEvent("pricing_tier_clicked", { tier: "free" })}
             className="w-full py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-mono font-bold text-xs uppercase tracking-wider text-center transition cursor-pointer"
           >
             {lang === "ru" ? "Запустить аудит бесплатно" : "Start Free Audit"}
@@ -117,7 +119,10 @@ export default function PricingSection({ lang }: PricingSectionProps) {
             </ul>
           </div>
           <button
-            onClick={() => setModalOpen(true)}
+            onClick={() => {
+              trackEvent("pricing_tier_clicked", { tier: "pro" });
+              setModalOpen(true);
+            }}
             className="w-full py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-mono font-bold text-xs uppercase tracking-wider text-center transition cursor-pointer shadow-lg shadow-emerald-500/20"
           >
             {lang === "ru" ? "Получить доступ к Founder Pro →" : "Get Founder Pro Access →"}

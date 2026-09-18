@@ -9,6 +9,7 @@ import {
   analyzeSnippet,
   LRUCache,
 } from "../lib/audit-core.ts";
+import { sanitizeProps, ALLOWED_EVENT_NAMES } from "../lib/analytics.ts";
 
 describe("parseGitHubUrl", () => {
   test("parses standard HTTPS GitHub repository URL", () => {
@@ -149,5 +150,48 @@ describe("LRUCache Limit & Eviction", () => {
     assert.equal(cache.get("a"), null);
     assert.equal(cache.get("b"), "2");
     assert.equal(cache.get("d"), "4");
+  });
+});
+
+describe("Analytics Telemetry & Sanitizer", () => {
+  test("sanitizes props by dropping nested objects, arrays, and functions", () => {
+    const raw = {
+      str: "valid string",
+      num: 42,
+      bool: true,
+      nestedObj: { foo: "bar" },
+      arr: [1, 2, 3],
+      fn: () => "evil",
+      nullVal: null,
+      undefVal: undefined,
+    };
+    const sanitized = sanitizeProps(raw as Record<string, unknown>);
+    assert.equal(sanitized.str, "valid string");
+    assert.equal(sanitized.num, 42);
+    assert.equal(sanitized.bool, true);
+    assert.equal("nestedObj" in sanitized, false);
+    assert.equal("arr" in sanitized, false);
+    assert.equal("fn" in sanitized, false);
+    assert.equal("nullVal" in sanitized, false);
+  });
+
+  test("truncates long strings to 120 characters and caps at 12 properties", () => {
+    const raw: Record<string, unknown> = {
+      veryLongStr: "A".repeat(200),
+    };
+    for (let i = 0; i < 20; i++) {
+      raw[`key_${i}`] = i;
+    }
+    const sanitized = sanitizeProps(raw);
+    assert.equal((sanitized.veryLongStr as string).length, 120);
+    assert.ok(Object.keys(sanitized).length <= 12);
+  });
+
+  test("verifies event allowlist contains core funnel events and rejects unknown names", () => {
+    assert.ok(ALLOWED_EVENT_NAMES.includes("landed"));
+    assert.ok(ALLOWED_EVENT_NAMES.includes("scan_completed"));
+    assert.ok(ALLOWED_EVENT_NAMES.includes("prompt_copied"));
+    assert.ok(ALLOWED_EVENT_NAMES.includes("waitlist_submitted"));
+    assert.equal((ALLOWED_EVENT_NAMES as readonly string[]).includes("user_injected_evil_event"), false);
   });
 });
