@@ -3,6 +3,9 @@
   "version": "0.2.0",
   "description": "AI Technical Debt & Doomsday Score Auditor for Solo Founders",
   "private": true,
+  "bin": {
+    "vibedebt": "./bin/cli.mjs"
+  },
   "scripts": {
     "dev": "NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt next dev",
     "build": "next build",

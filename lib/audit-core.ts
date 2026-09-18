@@ -258,7 +258,7 @@ export function analyzeSnippet(rawCode: string, isRu = true): AuditReport {
     estimatedFixCost: Math.round((doomsdayScore * 45) / 100) * 100,
     criticalBugsCount: antipatterns.filter((a) => a.severity === "CRITICAL").length,
     spaghettiIndex: +(doomsdayScore / 10).toFixed(1),
-    ghostTypesCount: anyMatches * 4 + 4,
+    ghostTypesCount: anyMatches,
     filesScanned: 1,
     hasTests: false,
     godComponents,
@@ -333,21 +333,77 @@ export class SimpleRateLimiter {
 
 /**
  * Validates that a target URL is a safe public HTTP/HTTPS endpoint.
- * Prevents SSRF attacks against loopback, link-local, and private RFC-1918 subnets.
+ * Prevents SSRF attacks against loopback, link-local, hex/octal/decimal IPs, and private RFC-1918 subnets.
  */
 export function isSafePublicUrl(rawUrl: string): boolean {
   try {
     const parsed = new URL(rawUrl.trim());
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
-    const hostname = parsed.hostname.toLowerCase();
-    if (!hostname || hostname === "localhost" || hostname === "0.0.0.0" || hostname === "::1") return false;
-    // Reject private and link-local IP addresses
-    if (/^127\./.test(hostname)) return false;
-    if (/^10\./.test(hostname)) return false;
-    if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname)) return false;
-    if (/^192\.168\./.test(hostname)) return false;
-    if (/^169\.254\./.test(hostname)) return false;
-    if (hostname.endsWith(".internal") || hostname.endsWith(".local")) return false;
+
+    // Remove brackets if IPv6
+    const cleanHost = parsed.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+    if (!cleanHost) return false;
+
+    // Check loopback / localhost
+    if (
+      cleanHost === "localhost" ||
+      cleanHost === "0.0.0.0" ||
+      cleanHost === "::1" ||
+      cleanHost === "::" ||
+      cleanHost.startsWith("127.")
+    ) {
+      return false;
+    }
+
+    // Reject non-standard dangerous ports (e.g. SMTP, SSH, Redis, DB ports)
+    if (parsed.port) {
+      const p = parseInt(parsed.port, 10);
+      if (![80, 443, 8080, 3000].includes(p)) {
+        return false;
+      }
+    }
+
+    // Reject internal domain suffixes
+    if (
+      cleanHost.endsWith(".internal") ||
+      cleanHost.endsWith(".local") ||
+      cleanHost.endsWith(".lan") ||
+      cleanHost.endsWith(".arpa") ||
+      cleanHost.endsWith(".corp") ||
+      cleanHost.endsWith(".home")
+    ) {
+      return false;
+    }
+
+    // Check hex, octal, or integer encoded IP addresses
+    if (/^0x[0-9a-f]+/i.test(cleanHost) || /^[0-9]+$/.test(cleanHost) || /^0[0-7]+\./.test(cleanHost)) {
+      return false;
+    }
+
+    // Check IPv6 loopback / unique local / link-local
+    if (cleanHost.includes(":")) {
+      if (
+        cleanHost.startsWith("fe80:") ||
+        cleanHost.startsWith("fc00:") ||
+        cleanHost.startsWith("fd") ||
+        cleanHost.startsWith("::")
+      ) {
+        return false;
+      }
+    }
+
+    // Check IPv4 private and link-local ranges
+    const ipv4Parts = cleanHost.split(".");
+    if (ipv4Parts.length === 4 && ipv4Parts.every((p) => /^\d+$/.test(p))) {
+      const [b0, b1] = ipv4Parts.map(Number);
+      if (b0 === 10) return false; // 10.0.0.0/8
+      if (b0 === 172 && b1 >= 16 && b1 <= 31) return false; // 172.16.0.0/12
+      if (b0 === 192 && b1 === 168) return false; // 192.168.0.0/16
+      if (b0 === 169 && b1 === 254) return false; // 169.254.0.0/16 (Cloud instance metadata)
+      if (b0 === 100 && b1 >= 64 && b1 <= 127) return false; // 100.64.0.0/10 (CGNAT)
+      if (b0 === 0) return false; // 0.0.0.0/8
+    }
+
     return true;
   } catch {
     return false;

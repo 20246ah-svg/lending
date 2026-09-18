@@ -211,6 +211,11 @@ describe("Live App URL Scanner & SSRF Guard", () => {
     assert.equal(isSafePublicUrl("http://localhost"), false);
     assert.equal(isSafePublicUrl("http://127.0.0.1:3000"), false);
     assert.equal(isSafePublicUrl("http://0.0.0.0"), false);
+    assert.equal(isSafePublicUrl("http://[::1]"), false);
+    assert.equal(isSafePublicUrl("http://0x7f000001"), false);
+    assert.equal(isSafePublicUrl("http://0177.0.0.1"), false);
+    assert.equal(isSafePublicUrl("http://api.internal"), false);
+    assert.equal(isSafePublicUrl("http://example.com:22"), false);
     assert.equal(isSafePublicUrl("http://10.0.0.1/admin"), false);
     assert.equal(isSafePublicUrl("http://192.168.1.1/secret"), false);
     assert.equal(isSafePublicUrl("http://169.254.169.254/latest/meta-data"), false);

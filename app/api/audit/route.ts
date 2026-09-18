@@ -486,7 +486,7 @@ export async function POST(req: Request) {
         estimatedFixCost,
         criticalBugsCount,
         spaghettiIndex,
-        ghostTypesCount: anyMatches * 4 + 8,
+        ghostTypesCount: anyMatches,
         filesScanned: realSourceFiles.length || treeItems.length,
         hasTests,
         starsCount: repoData.stargazers_count,

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { appendRecord, readRecords } from "@/lib/storage";
 
 interface StoredOrder {
   id: string;
@@ -10,7 +11,15 @@ interface StoredOrder {
   createdAt: number;
 }
 
-const orders: StoredOrder[] = [];
+// In-memory cache synced with disk persistence
+let ordersCache: StoredOrder[] | null = null;
+
+function getOrders(): StoredOrder[] {
+  if (!ordersCache) {
+    ordersCache = readRecords<StoredOrder>("orders");
+  }
+  return ordersCache;
+}
 
 // Rate limiter: 10 order submissions per hour per IP
 const rateMap = new Map<string, { count: number; resetAt: number }>();
@@ -70,7 +79,8 @@ export async function POST(req: NextRequest) {
       createdAt: Date.now(),
     };
 
-    orders.push(orderRecord);
+    appendRecord("orders", orderRecord);
+    getOrders().push(orderRecord);
 
     const deliverySla = selectedTier === "concierge" ? "24 часа" : "48 часов";
 
@@ -92,9 +102,10 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET() {
+  const currentOrders = getOrders();
   return NextResponse.json({
-    totalOrders: orders.length,
-    orders: orders.map((o) => ({
+    totalOrders: currentOrders.length,
+    orders: currentOrders.map((o) => ({
       id: o.id,
       tier: o.tier,
       createdAt: o.createdAt,

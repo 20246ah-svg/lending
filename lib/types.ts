@@ -14,6 +14,7 @@ export interface Antipattern {
   sampleBadCode: string;
   sampleFix: string;
   cwe?: string;
+  category?: "Security" | "Architecture" | "Reliability";
 }
 
 export interface RefactorStep {
