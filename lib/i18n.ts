@@ -28,8 +28,8 @@ export const i18n = {
     cliTitle: "Приватный код? Запусти аудит локально за 1 секунду",
     cliSub: "Для закрытых коммерческих репозиториев и NDA-проектов. Исходный код анализируется эвристически прямо на вашей машине и никогда не покидает память.",
     pricingBadge: "💳 ПРОЗРАЧНЫЙ ДОСТУП",
-    pricingTitle: "Честные условия без скрытых платежей",
-    pricingSub: "Бесплатный экспресс-аудит для каждого фаундера. Без привязки карт.",
+    pricingTitle: "Прозрачные разовые тарифы без подписок",
+    pricingSub: "Бесплатный экспресс-аудит для каждого фаундера или глубокий аудит сеньор-архитектором за 24–48 часов.",
   },
   en: {
     badgeProof: "⚡ HEURISTIC TECH DEBT AUDITOR",
@@ -60,7 +60,7 @@ export const i18n = {
     cliTitle: "Private Codebase? Run Audit Locally in 1 Second",
     cliSub: "For enterprise code and proprietary repos. 100% offline heuristic analysis. Zero code ever leaves your machine.",
     pricingBadge: "💳 TRANSPARENT VALUE",
-    pricingTitle: "Simple, Transparent Pricing",
-    pricingSub: "Free baseline audits for every builder. Zero bait-and-switch.",
+    pricingTitle: "Simple, Transparent Pricing Without Subscriptions",
+    pricingSub: "Free express scans for every builder, or human-in-the-loop technical audit delivered in 24–48 hours.",
   },
 };

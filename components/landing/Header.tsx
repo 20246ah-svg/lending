@@ -26,9 +26,12 @@ export default function Header({ lang, setLang }: HeaderProps) {
           </div>
         </div>
 
-        <nav className="hidden md:flex items-center gap-8 text-xs font-mono text-zinc-400 tracking-wider">
+        <nav className="hidden md:flex items-center gap-7 text-xs font-mono text-zinc-400 tracking-wider">
           <a href="#audit-tool" className="hover:text-emerald-400 transition-colors">
             {lang === "ru" ? "// АУДИТ" : "// AUDIT"}
+          </a>
+          <a href="#due-diligence" className="hover:text-emerald-400 transition-colors text-amber-400/90 font-bold">
+            {lang === "ru" ? "// M&A АУДИТ" : "// DUE DILIGENCE"}
           </a>
           <a href="#vectors" className="hover:text-emerald-400 transition-colors">
             {lang === "ru" ? "// ПРИЧИНЫ КРАХА" : "// VECTORS"}

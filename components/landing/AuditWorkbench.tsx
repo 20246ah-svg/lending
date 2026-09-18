@@ -61,6 +61,24 @@ export default function AuditWorkbench({ report, lang }: AuditWorkbenchProps) {
     }
   };
 
+  const handleShareTwitter = () => {
+    try {
+      const text = isRu
+        ? `Мой проект набрал ${report.doomsdayScore}% в VibeDebt Doomsday Audit 💀 До критического сбоя: ${report.timeToCollapse}. Проверь свой вайбкод перед релизом:`
+        : `My codebase scored ${report.doomsdayScore}% on VibeDebt Doomsday Audit 💀 Collapse horizon: ${report.timeToCollapse}. Test your Cursor/Lovable code:`;
+      const url = "https://vibedebt.dev";
+      const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
+      trackEvent("share_clicked", {
+        platform: "twitter",
+        score: report.doomsdayScore,
+        repo: report.repoName.slice(0, 40),
+      });
+      window.open(twitterUrl, "_blank", "noopener,noreferrer");
+    } catch {
+      // safe
+    }
+  };
+
   const mainFile = report.godComponents[0]?.name || "src/App.tsx";
   const mainLines = report.godComponents[0]?.lines || 450;
   const daysToDisaster = Math.max(2, Math.round(90 - (report.doomsdayScore / 100) * 85));
@@ -82,13 +100,21 @@ export default function AuditWorkbench({ report, lang }: AuditWorkbenchProps) {
             </span>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleShareTwitter}
+              className="px-3 py-1.5 rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-xs font-mono text-zinc-200 transition flex items-center gap-1.5 cursor-pointer"
+            >
+              <span className="font-bold text-sm leading-none">𝕏</span>
+              <span>{isRu ? "Поделиться" : "Share"}</span>
+            </button>
+
             <button
               onClick={copyBadgeMarkdown}
               className="px-3 py-1.5 rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-xs font-mono text-zinc-200 transition flex items-center gap-1.5 cursor-pointer"
             >
               {copiedBadge ? <CheckIcon size={13} className="text-emerald-400" /> : <Share2Icon size={13} />}
-              <span>{copiedBadge ? (isRu ? "Бейдж скопирован!" : "Badge Copied!") : (isRu ? "Экспорт бейджа" : "Export Badge")}</span>
+              <span>{copiedBadge ? (isRu ? "Скопирован!" : "Copied!") : (isRu ? "README бейдж" : "README Badge")}</span>
             </button>
           </div>
         </div>

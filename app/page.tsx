@@ -7,9 +7,11 @@ import Header from "@/components/landing/Header";
 import HeroSection from "@/components/landing/HeroSection";
 import AuditWorkbench from "@/components/landing/AuditWorkbench";
 import FailureVectors from "@/components/landing/FailureVectors";
+import DueDiligenceSection from "@/components/landing/DueDiligenceSection";
 import CliSection from "@/components/landing/CliSection";
 import PricingSection from "@/components/landing/PricingSection";
 import Footer from "@/components/landing/Footer";
+import AuditOrderModal from "@/components/landing/AuditOrderModal";
 import { AuditReport, AuditRequestBody } from "@/lib/types";
 import { trackEvent } from "@/lib/analytics";
 
@@ -86,6 +88,13 @@ export default function Home() {
   const [auditProgress, setAuditProgress] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [auditReport, setAuditReport] = useState<AuditReport | null>(null);
+  const [orderModalOpen, setOrderModalOpen] = useState(false);
+  const [orderTier, setOrderTier] = useState<"concierge" | "due_diligence">("due_diligence");
+
+  const handleOpenOrder = (tier: "concierge" | "due_diligence") => {
+    setOrderTier(tier);
+    setOrderModalOpen(true);
+  };
 
   const runAudit = async (payload: AuditRequestBody) => {
     setIsAuditing(true);
@@ -178,11 +187,24 @@ export default function Home() {
 
       <FailureVectors lang={lang} />
 
+      <DueDiligenceSection
+        lang={lang}
+        onOpenOrder={handleOpenOrder}
+        onViewSample={handleLoadSample}
+      />
+
       <CliSection lang={lang} />
 
       <PricingSection lang={lang} />
 
       <Footer lang={lang} />
+
+      <AuditOrderModal
+        isOpen={orderModalOpen}
+        onClose={() => setOrderModalOpen(false)}
+        lang={lang}
+        initialTier={orderTier}
+      />
     </div>
   );
 }

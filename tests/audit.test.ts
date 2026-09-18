@@ -191,6 +191,8 @@ describe("Analytics Telemetry & Sanitizer", () => {
     assert.ok(ALLOWED_EVENT_NAMES.includes("landed"));
     assert.ok(ALLOWED_EVENT_NAMES.includes("scan_completed"));
     assert.ok(ALLOWED_EVENT_NAMES.includes("prompt_copied"));
+    assert.ok(ALLOWED_EVENT_NAMES.includes("share_clicked"));
+    assert.ok(ALLOWED_EVENT_NAMES.includes("order_submitted"));
     assert.ok(ALLOWED_EVENT_NAMES.includes("waitlist_submitted"));
     assert.equal((ALLOWED_EVENT_NAMES as readonly string[]).includes("user_injected_evil_event"), false);
   });
