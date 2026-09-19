@@ -15,7 +15,6 @@ import {
   SimpleRateLimiter,
   fetchWithRetry,
   parseGitHubRateLimitHeaders,
-  RateLimitError,
 } from "@/lib/audit-core";
 
 const GITHUB_API_BASE = "https://api.github.com";
@@ -63,7 +62,7 @@ async function fetchGitHub<T = unknown>(
 
   if (!result.response.ok) {
     const error = new Error(`GitHub API error: HTTP ${result.response.status}`);
-    (error as any).status = result.response.status;
+    (error as Error & { status?: number }).status = result.response.status;
     throw error;
   }
 
@@ -116,6 +115,15 @@ async function fetchMultipleFilesInParallel(
   }
 
   return results;
+}
+
+async function fetchWithTimeout(
+  url: string,
+  headers: Record<string, string>,
+  timeoutMs = 10000
+): Promise<Response> {
+  const result = await fetchWithRetry(url, { headers, timeoutMs }, githubETagCache);
+  return result.response;
 }
 
 export async function POST(req: Request) {
@@ -385,16 +393,12 @@ export async function POST(req: Request) {
         sampledFilePaths.push(path);
       }
 
-      // Strip comments and string literals to prevent false positives!
-      const sampledCode = sampledFiles.get(topLargest[0]?.path)?.code || "";
-      const sanitizedSampledCode = stripCodeLiteralsAndComments(sampledCode);
-      const sampledFilePath = sampledFiles.get(topLargest[0]?.path)?.path || "";
-
       // God files criteria: files > 14 KB (~350+ lines)
       const trulyLargeFiles = topLargest.filter((f) => (f.size || 0) > 14000);
       const godComponents: GodComponent[] = trulyLargeFiles.slice(0, 4).map((f) => {
-        const estLines = sampledFilePath === f.path && sampledCode
-          ? sampledCode.split("\n").length
+        const fileContent = sampledFiles.get(f.path)?.code;
+        const estLines = fileContent
+          ? fileContent.split("\n").length
           : Math.round((f.size || 0) / 38);
 
         const issues: string[] = [];

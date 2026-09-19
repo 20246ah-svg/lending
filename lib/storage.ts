@@ -1,4 +1,4 @@
-import { Pool, PoolClient } from 'pg';
+import { Pool } from 'pg';
 
 const connectionString = process.env.DATABASE_URL;
 
@@ -25,13 +25,15 @@ export interface WaitlistEntry {
   email: string;
   ip: string;
   created_at?: Date;
+  timestamp?: number;
 }
 
 export interface StoredOrder {
   id: string;
   tier: string;
   email: string;
-  repo_url: string;
+  repo_url?: string;
+  repoOrListingUrl?: string;
   notes?: string;
   lang: string;
   created_at?: Date;
@@ -109,7 +111,7 @@ export async function appendRecord<T extends object>(
           order.id,
           order.tier,
           order.email,
-          (order as any).repoOrListingUrl || '',
+          order.repoOrListingUrl || order.repo_url || '',
           order.notes || '',
           order.lang || 'ru',
         ]

@@ -9,9 +9,9 @@ interface WaitlistEntry {
 
 let waitlistCache: WaitlistEntry[] | null = null;
 
-function getWaitlist(): WaitlistEntry[] {
+async function getWaitlist(): Promise<WaitlistEntry[]> {
   if (!waitlistCache) {
-    waitlistCache = readRecords<WaitlistEntry>("waitlist");
+    waitlistCache = await readRecords<WaitlistEntry>("waitlist");
   }
   return waitlistCache;
 }
@@ -33,13 +33,14 @@ export async function POST(req: Request) {
       ip: clientIp,
     };
 
-    appendRecord("waitlist", entry);
-    getWaitlist().push(entry);
+    await appendRecord("waitlist", entry);
+    const list = await getWaitlist();
+    list.push(entry);
 
     return NextResponse.json({
       success: true,
       message: "Subscribed to early access waitlist",
-      totalSubscribers: getWaitlist().length,
+      totalSubscribers: list.length,
     });
   } catch {
     return NextResponse.json({ error: "Failed to join waitlist" }, { status: 500 });
@@ -47,8 +48,9 @@ export async function POST(req: Request) {
 }
 
 export async function GET() {
+  const list = await getWaitlist();
   return NextResponse.json({
-    totalSubscribers: getWaitlist().length,
+    totalSubscribers: list.length,
     status: "active",
   });
 }

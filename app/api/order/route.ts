@@ -14,9 +14,9 @@ interface StoredOrder {
 // In-memory cache synced with disk persistence
 let ordersCache: StoredOrder[] | null = null;
 
-function getOrders(): StoredOrder[] {
+async function getOrders(): Promise<StoredOrder[]> {
   if (!ordersCache) {
-    ordersCache = readRecords<StoredOrder>("orders");
+    ordersCache = await readRecords<StoredOrder>("orders");
   }
   return ordersCache;
 }
@@ -79,8 +79,9 @@ export async function POST(req: NextRequest) {
       createdAt: Date.now(),
     };
 
-    appendRecord("orders", orderRecord);
-    getOrders().push(orderRecord);
+    await appendRecord("orders", orderRecord);
+    const orders = await getOrders();
+    orders.push(orderRecord);
 
     const deliverySla = selectedTier === "concierge" ? "24 часа" : "48 часов";
 
@@ -102,7 +103,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET() {
-  const currentOrders = getOrders();
+  const currentOrders = await getOrders();
   return NextResponse.json({
     totalOrders: currentOrders.length,
     orders: currentOrders.map((o) => ({

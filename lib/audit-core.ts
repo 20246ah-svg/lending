@@ -410,7 +410,6 @@ export async function fetchWithRetry(
   }
 
   let lastError: Error | null = null;
-  let response: Response | null = null;
 
   for (let attempt = 0; attempt <= config.maxRetries; attempt++) {
     try {
@@ -419,8 +418,6 @@ export async function fetchWithRetry(
         headers,
         signal: controller.signal,
       });
-
-      response = res;
 
       if (res.status === 304 && etagCache) {
         const cachedEtag = etagCache.get(url);
@@ -593,7 +590,7 @@ export function isSafePublicUrl(rawUrl: string): boolean {
     // Check IPv4 private and link-local ranges
     const ipv4Parts = cleanHost.split(".");
     if (ipv4Parts.length === 4 && ipv4Parts.every((p) => /^\d+$/.test(p))) {
-      const [b0, b1, b2, b3] = ipv4Parts.map(Number);
+      const [b0, b1, b2] = ipv4Parts.map(Number);
       // 0.0.0.0/8 — "this network"
       if (b0 === 0) return false;
       // 10.0.0.0/8 — RFC1918 private
