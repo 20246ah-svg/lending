@@ -223,6 +223,25 @@ describe("Live App URL Scanner & SSRF Guard", () => {
     assert.equal(isSafePublicUrl("not-a-url"), false);
   });
 
+  test("rejects IPv6 link-local and loopback addresses", () => {
+    assert.equal(isSafePublicUrl("https://[fe80::1]"), false);
+    assert.equal(isSafePublicUrl("https://[fc00::1]"), false);
+    assert.equal(isSafePublicUrl("https://[fd00::1]"), false);
+    assert.equal(isSafePublicUrl("https://[::1]"), false);
+    assert.equal(isSafePublicUrl("https://[::]"), false);
+  });
+
+  test("rejects single-label domains without TLD", () => {
+    assert.equal(isSafePublicUrl("http://api"), false);
+    assert.equal(isSafePublicUrl("http://myhost"), false);
+  });
+
+  test("rejects IPv4 multicast and reserved ranges", () => {
+    assert.equal(isSafePublicUrl("http://224.0.0.1"), false);
+    assert.equal(isSafePublicUrl("http://239.255.255.250"), false);
+    assert.equal(isSafePublicUrl("http://240.0.0.1"), false);
+  });
+
   test("extracts script bundles from HTML and resolves relative URLs", () => {
     const html = `
       <html>

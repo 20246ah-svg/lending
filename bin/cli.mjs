@@ -7,6 +7,11 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "url";
+import { dirname, resolve } from "path";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const IGNORED_DIRS = new Set([
   "node_modules",
@@ -38,6 +43,22 @@ const SECRET_PATTERNS = [
   { name: "AWS Access Key ID", regex: /AKIA[0-9A-Z]{16}/, severity: "HIGH" },
   { name: "SendGrid API Key", regex: /SG\.[a-zA-Z0-9_-]{22}\.[a-zA-Z0-9_-]{43}/, severity: "HIGH" },
 ];
+
+let isShuttingDown = false;
+
+function setupSignalHandlers(onShutdown) {
+  const signals = ["SIGINT", "SIGTERM", "SIGBREAK"];
+  signals.forEach((sig) => {
+    process.on(sig, () => {
+      if (!isShuttingDown) {
+        isShuttingDown = true;
+        console.log(`\n\n\x1b[33m⚠ Received ${sig}, shutting down gracefully...\x1b[0m`);
+        onShutdown?.();
+        process.exit(128 + signals.indexOf(sig));
+      }
+    });
+  });
+}
 
 function isTestFile(filePath) {
   const lower = filePath.toLowerCase();
@@ -72,7 +93,7 @@ export function runCli(targetDir = ".") {
 
   if (!fs.existsSync(resolvedTarget)) {
     console.error(`\x1b[31m✖ Error: Target directory '${resolvedTarget}' does not exist.\x1b[0m`);
-    process.exit(1);
+    return { success: false, error: "Directory not found" };
   }
 
   console.log(`\n\x1b[36m⚡ VibeDebt Local Codebase Auditor v0.4.0\x1b[0m`);
@@ -91,7 +112,7 @@ export function runCli(targetDir = ".") {
 
     if (isTestFile(relPath)) {
       hasTests = true;
-      continue; // Don't flag test files as application monoliths
+      continue;
     }
 
     try {
@@ -103,7 +124,6 @@ export function runCli(targetDir = ".") {
         godFiles.push({ path: relPath, lines });
       }
 
-      // Check secrets
       for (const secret of SECRET_PATTERNS) {
         if (secret.regex.test(content)) {
           secretLeaks.push({ file: relPath, name: secret.name, severity: secret.severity });
@@ -114,7 +134,6 @@ export function runCli(targetDir = ".") {
     }
   }
 
-  // Calculate score
   let score = 20;
   if (!hasTests) score += 20;
   score += Math.min(35, Math.round((totalLines / 20000) * 35));
@@ -124,7 +143,6 @@ export function runCli(targetDir = ".") {
 
   const durationMs = Date.now() - startTime;
 
-  // Print Report
   console.log(`\x1b[32m✔ Scanned ${files.length} source files (${totalLines.toLocaleString()} LOC) in ${durationMs}ms\x1b[0m`);
 
   if (score >= 75) {
@@ -160,7 +178,6 @@ export function runCli(targetDir = ".") {
     console.log(`\x1b[32m✔ Zero hardcoded credentials detected in source\x1b[0m`);
   }
 
-  // Generate surgical prompt artifact in .vibedebt/prompts.md
   if (godFiles.length > 0) {
     try {
       const topGod = godFiles[0];
@@ -194,8 +211,36 @@ export function runCli(targetDir = ".") {
   return { score, godFilesCount: godFiles.length, secretLeaksCount: secretLeaks.length };
 }
 
-// If executed directly from command line
-if (import.meta.url === `file://${process.argv[1]}`) {
+function isMainModule() {
+  try {
+    if (!process.argv[1]) return false;
+    const argvPath = resolve(process.argv[1]);
+    const thisPath = resolve(__filename);
+    return argvPath === thisPath || argvPath === thisPath + ".js";
+  } catch {
+    return false;
+  }
+}
+
+if (isMainModule()) {
   const target = process.argv[2] || ".";
-  runCli(target);
+  let exitCode = 0;
+  let result;
+
+  setupSignalHandlers(() => {
+    console.log(`\n\x1b[33m⚠ Scan interrupted by user\x1b[0m`);
+    exitCode = 130;
+  });
+
+  try {
+    result = runCli(target);
+    if (!result.success) {
+      exitCode = 1;
+    }
+  } catch (err) {
+    console.error(`\x1b[31m✖ Fatal error: ${err instanceof Error ? err.message : String(err)}\x1b[0m`);
+    exitCode = 1;
+  }
+
+  process.exit(exitCode);
 }

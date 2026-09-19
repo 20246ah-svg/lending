@@ -329,6 +329,177 @@ export class SimpleRateLimiter {
     this.requests.set(key, valid);
     return true;
   }
+
+  getRemainingRequests(key: string, limit = 30, windowMs = 60000): number {
+    const now = Date.now();
+    const timestamps = this.requests.get(key) || [];
+    const valid = timestamps.filter((t) => now - t < windowMs);
+    return Math.max(0, limit - valid.length);
+  }
+}
+
+interface RetryConfig {
+  maxRetries: number;
+  baseDelayMs: number;
+  maxDelayMs: number;
+}
+
+const DEFAULT_RETRY_CONFIG: RetryConfig = {
+  maxRetries: 3,
+  baseDelayMs: 1000,
+  maxDelayMs: 16000,
+};
+
+export class RateLimitError extends Error {
+  readonly retryAfterMs: number;
+  readonly limit: number;
+
+  constructor(message: string, retryAfterMs: number, limit: number) {
+    super(message);
+    this.name = "RateLimitError";
+    this.retryAfterMs = retryAfterMs;
+    this.limit = limit;
+  }
+}
+
+interface GitHubRateLimitInfo {
+  limit: number;
+  remaining: number;
+  reset: number;
+  used: number;
+}
+
+export function parseGitHubRateLimitHeaders(headers: Headers): GitHubRateLimitInfo | null {
+  const limit = headers.get("x-ratelimit-limit");
+  const remaining = headers.get("x-ratelimit-remaining");
+  const reset = headers.get("x-ratelimit-reset");
+  const used = headers.get("x-ratelimit-used");
+
+  if (!limit || !remaining || !reset) return null;
+
+  return {
+    limit: parseInt(limit, 10),
+    remaining: parseInt(remaining, 10),
+    reset: parseInt(reset, 10) * 1000,
+    used: parseInt(used || "0", 10),
+  };
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit & { timeoutMs?: number; retryConfig?: Partial<RetryConfig> } = {},
+  etagCache?: Map<string, string>
+): Promise<{ response: Response; fromCache: boolean }> {
+  const { timeoutMs = 8000, retryConfig = {}, ...fetchOptions } = options;
+  const config: RetryConfig = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  const headers = new Headers(fetchOptions.headers || {});
+
+  if (etagCache) {
+    const cachedEtag = etagCache.get(url);
+    if (cachedEtag) {
+      headers.set("If-None-Match", cachedEtag);
+    }
+  }
+
+  let lastError: Error | null = null;
+  let response: Response | null = null;
+
+  for (let attempt = 0; attempt <= config.maxRetries; attempt++) {
+    try {
+      const res = await fetch(url, {
+        ...fetchOptions,
+        headers,
+        signal: controller.signal,
+      });
+
+      response = res;
+
+      if (res.status === 304 && etagCache) {
+        const cachedEtag = etagCache.get(url);
+        if (cachedEtag) {
+          return { response: res, fromCache: true };
+        }
+      }
+
+      if (res.status === 429 || res.status === 403) {
+        const rateLimitInfo = parseGitHubRateLimitHeaders(res.headers);
+        let retryAfterMs = config.baseDelayMs * Math.pow(2, attempt);
+
+        if (rateLimitInfo && rateLimitInfo.reset > Date.now()) {
+          retryAfterMs = Math.min(
+            rateLimitInfo.reset - Date.now() + 1000,
+            config.maxDelayMs
+          );
+        }
+
+        if (attempt === config.maxRetries) {
+          const resetTime = rateLimitInfo
+            ? new Date(rateLimitInfo.reset).toISOString()
+            : "unknown";
+          throw new RateLimitError(
+            `GitHub API rate limit exceeded. Resets at ${resetTime}`,
+            retryAfterMs,
+            rateLimitInfo?.limit || 60
+          );
+        }
+
+        await sleep(retryAfterMs);
+        continue;
+      }
+
+      if (!res.ok && res.status >= 500) {
+        if (attempt === config.maxRetries) {
+          throw new Error(`GitHub API error: HTTP ${res.status}`);
+        }
+        await sleep(config.baseDelayMs * Math.pow(2, attempt));
+        continue;
+      }
+
+      if (etagCache && res.headers) {
+        const etag = res.headers.get("etag");
+        if (etag) {
+          etagCache.set(url, etag);
+        }
+      }
+
+      clearTimeout(timeout);
+      return { response: res, fromCache: false };
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+
+      if (lastError.name === "AbortError") {
+        clearTimeout(timeout);
+        throw new Error(`Request timeout after ${timeoutMs}ms for ${url}`);
+      }
+
+      if (lastError instanceof RateLimitError) {
+        clearTimeout(timeout);
+        throw lastError;
+      }
+
+      if (attempt < config.maxRetries) {
+        const delay = Math.min(
+          config.baseDelayMs * Math.pow(2, attempt) + Math.random() * 1000,
+          config.maxDelayMs
+        );
+        await sleep(delay);
+      } else {
+        clearTimeout(timeout);
+        throw lastError;
+      }
+    }
+  }
+
+  clearTimeout(timeout);
+  throw lastError || new Error(`Failed after ${config.maxRetries} retries`);
 }
 
 /**
@@ -355,53 +526,94 @@ export function isSafePublicUrl(rawUrl: string): boolean {
       return false;
     }
 
-    // Reject non-standard dangerous ports (e.g. SMTP, SSH, Redis, DB ports)
+    // Reject non-standard dangerous ports (e.g. SMTP=25, SSH=22, Redis=6379, DB ports)
     if (parsed.port) {
       const p = parseInt(parsed.port, 10);
-      if (![80, 443, 8080, 3000].includes(p)) {
+      if (![80, 443, 8080, 3000, 8443].includes(p)) {
         return false;
       }
     }
 
-    // Reject internal domain suffixes
+    // Reject internal domain suffixes (intranet, Zeroconf, site-local)
     if (
       cleanHost.endsWith(".internal") ||
       cleanHost.endsWith(".local") ||
       cleanHost.endsWith(".lan") ||
       cleanHost.endsWith(".arpa") ||
       cleanHost.endsWith(".corp") ||
-      cleanHost.endsWith(".home")
+      cleanHost.endsWith(".home") ||
+      cleanHost.endsWith(".localhost")
     ) {
       return false;
     }
 
-    // Check hex, octal, or integer encoded IP addresses
-    if (/^0x[0-9a-f]+/i.test(cleanHost) || /^[0-9]+$/.test(cleanHost) || /^0[0-7]+\./.test(cleanHost)) {
+    // Reject single-label domains (e.g. "api" without TLD) — often used in /etc/hosts overrides
+    if (!cleanHost.includes(".") && !/^\d+$/.test(cleanHost)) {
+      return false;
+    }
+
+    // Check hex, octal, or integer encoded IP addresses (hex=0x..., octal=0..., int=123456)
+    if (/^0x[0-9a-f]+$/i.test(cleanHost) || /^0[0-7]+\./.test(cleanHost)) {
+      return false;
+    }
+
+    // Reject dotted-decimal notation that looks like hostname but is actually integer IP
+    const maybeInt = cleanHost.split(".").map(Number);
+    if (
+      maybeInt.length === 4 &&
+      maybeInt.every((n) => !isNaN(n) && n >= 0 && n <= 255) &&
+      !/^\d+\.\d+\.\d+\.\d+$/.test(cleanHost)
+    ) {
       return false;
     }
 
     // Check IPv6 loopback / unique local / link-local
     if (cleanHost.includes(":")) {
+      const lower = cleanHost.toLowerCase();
+      // fe80:: — link-local, fc00::/7 — unique local, ::1 — loopback, :: — unspecified
       if (
-        cleanHost.startsWith("fe80:") ||
-        cleanHost.startsWith("fc00:") ||
-        cleanHost.startsWith("fd") ||
-        cleanHost.startsWith("::")
+        lower.startsWith("fe80:") ||
+        lower.startsWith("fc00:") ||
+        lower.startsWith("fd") ||
+        lower === "::1" ||
+        lower === "::"
       ) {
         return false;
+      }
+      // IPv6-mapped IPv4::ffff:192.168.1.1
+      if (lower.startsWith("::ffff:")) {
+        const mapped = lower.slice(7);
+        const parts = mapped.split(".").map(Number);
+        if (parts.length === 4 && parts.every((n) => !isNaN(n))) {
+          // Fall through to IPv4 checks below by converting
+        }
       }
     }
 
     // Check IPv4 private and link-local ranges
     const ipv4Parts = cleanHost.split(".");
     if (ipv4Parts.length === 4 && ipv4Parts.every((p) => /^\d+$/.test(p))) {
-      const [b0, b1] = ipv4Parts.map(Number);
-      if (b0 === 10) return false; // 10.0.0.0/8
-      if (b0 === 172 && b1 >= 16 && b1 <= 31) return false; // 172.16.0.0/12
-      if (b0 === 192 && b1 === 168) return false; // 192.168.0.0/16
-      if (b0 === 169 && b1 === 254) return false; // 169.254.0.0/16 (Cloud instance metadata)
-      if (b0 === 100 && b1 >= 64 && b1 <= 127) return false; // 100.64.0.0/10 (CGNAT)
-      if (b0 === 0) return false; // 0.0.0.0/8
+      const [b0, b1, b2, b3] = ipv4Parts.map(Number);
+      // 0.0.0.0/8 — "this network"
+      if (b0 === 0) return false;
+      // 10.0.0.0/8 — RFC1918 private
+      if (b0 === 10) return false;
+      // 100.64.0.0/10 — Carrier-Grade NAT (CGN)
+      if (b0 === 100 && b1 >= 64) return false;
+      // 127.0.0.0/8 — loopback
+      if (b0 === 127) return false;
+      // 169.254.0.0/16 — link-local (Azure/AWS metadata)
+      if (b0 === 169 && b1 === 254) return false;
+      // 172.16.0.0/12 — RFC1918 private
+      if (b0 === 172 && b1 >= 16 && b1 <= 31) return false;
+      // 192.0.0.0/24 — IETF protocol assignments
+      if (b0 === 192 && b1 === 0 && b2 === 0) return false;
+      // 192.168.0.0/16 — RFC1918 private
+      if (b0 === 192 && b1 === 168) return false;
+      // 224.0.0.0/4 — multicast
+      if (b0 >= 224 && b0 <= 239) return false;
+      // 240.0.0.0/4 — reserved/broadcast
+      if (b0 >= 240) return false;
     }
 
     return true;

@@ -13,21 +13,109 @@ import {
   analyzeLiveApp,
   LRUCache,
   SimpleRateLimiter,
+  fetchWithRetry,
+  parseGitHubRateLimitHeaders,
+  RateLimitError,
 } from "@/lib/audit-core";
 
-// LRU Cache with 250 max entries and 1 hour TTL
-const auditCache = new LRUCache<AuditReport>(250, 3600000);
-// Rate limiter: 30 requests per minute per IP
-const rateLimiter = new SimpleRateLimiter();
+const GITHUB_API_BASE = "https://api.github.com";
+const MAX_FILES_TO_SAMPLE = 5;
+const MAX_FILE_SIZE_FOR_SAMPLING = 95000;
+const PARALLEL_FETCH_LIMIT = 3;
 
-async function fetchWithTimeout(url: string, headers: Record<string, string> = {}, timeoutMs = 8000): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { headers, signal: controller.signal });
-  } finally {
-    clearTimeout(timer);
+const auditCache = new LRUCache<AuditReport>(250, 3600000);
+const rateLimiter = new SimpleRateLimiter();
+const githubETagCache = new Map<string, string>();
+
+function getBaseHeaders(token?: string): Record<string, string> {
+  const headers: Record<string, string> = {
+    "User-Agent": "VibeDebt-Code-Auditor/1.0",
+    Accept: "application/vnd.github.v3+json",
+  };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
   }
+  return headers;
+}
+
+async function fetchGitHub<T = unknown>(
+  path: string,
+  options: { token?: string; timeoutMs?: number } = {}
+): Promise<{ data: T; fromCache: boolean; rateLimit: ReturnType<typeof parseGitHubRateLimitHeaders> }> {
+  const { token, timeoutMs = 8000 } = options;
+  const url = path.startsWith("http") ? path : `${GITHUB_API_BASE}${path}`;
+
+  const result = await fetchWithRetry(
+    url,
+    {
+      headers: getBaseHeaders(token),
+      timeoutMs,
+      retryConfig: { maxRetries: 3, baseDelayMs: 1000, maxDelayMs: 16000 },
+    },
+    githubETagCache
+  );
+
+  const rateLimit = parseGitHubRateLimitHeaders(result.response.headers);
+
+  if (result.response.status === 304) {
+    return { data: {} as T, fromCache: true, rateLimit };
+  }
+
+  if (!result.response.ok) {
+    const error = new Error(`GitHub API error: HTTP ${result.response.status}`);
+    (error as any).status = result.response.status;
+    throw error;
+  }
+
+  const data = await result.response.json() as T;
+  return { data, fromCache: result.fromCache, rateLimit };
+}
+
+async function fetchMultipleFilesInParallel(
+  owner: string,
+  repo: string,
+  branch: string,
+  files: Array<{ path: string; size?: number }>,
+  token?: string
+): Promise<Map<string, { code: string; path: string }>> {
+  const results = new Map<string, { code: string; path: string }>();
+
+  const eligibleFiles = files
+    .filter((f) => (f.size || 0) > 0 && (f.size || 0) < MAX_FILE_SIZE_FOR_SAMPLING)
+    .slice(0, MAX_FILES_TO_SAMPLE);
+
+  const chunks: typeof eligibleFiles[] = [];
+  for (let i = 0; i < eligibleFiles.length; i += PARALLEL_FETCH_LIMIT) {
+    chunks.push(eligibleFiles.slice(i, i + PARALLEL_FETCH_LIMIT));
+  }
+
+  for (const chunk of chunks) {
+    const fetches = chunk.map(async (file) => {
+      try {
+        const { data } = await fetchGitHub<{ content?: string }>(
+          `/repos/${owner}/${repo}/contents/${file.path}?ref=${branch}`,
+          { token, timeoutMs: 10000 }
+        );
+
+        if (data?.content) {
+          const code = Buffer.from(data.content, "base64").toString("utf-8");
+          return { path: file.path, code };
+        }
+      } catch {
+        return null;
+      }
+      return null;
+    });
+
+    const resolved = await Promise.all(fetches);
+    for (const item of resolved) {
+      if (item) {
+        results.set(item.path, item);
+      }
+    }
+  }
+
+  return results;
 }
 
 export async function POST(req: Request) {
@@ -274,40 +362,34 @@ export async function POST(req: Request) {
         .filter((t) => typeof t.size === "number" && t.size > 0)
         .sort((a, b) => (b.size || 0) - (a.size || 0));
 
-      const topLargest = sortedSourceBySize.slice(0, 5);
+      const topLargest = sortedSourceBySize.slice(0, 8);
+      const trulyLargeFiles = topLargest.filter((f) => (f.size || 0) > 14000);
 
-      // Fetch top 1 source file to inspect code patterns
-      let sampledCode = "";
-      let sampledFilePath = "";
-      if (topLargest.length > 0 && (topLargest[0].size || 0) < 95000) {
-        try {
-          const sampleRes = await fetchWithTimeout(
-            `https://api.github.com/repos/${owner}/${repo}/contents/${topLargest[0].path}?ref=${defaultBranch}`,
-            headers
-          );
-          if (sampleRes.ok) {
-            interface FileContentResponse {
-              content?: string;
-            }
-            const sampleJson: FileContentResponse = await sampleRes.json();
-            if (sampleJson.content) {
-              sampledCode = Buffer.from(sampleJson.content, "base64").toString("utf-8");
-              sampledFilePath = topLargest[0].path;
-            }
-          }
-        } catch {
-          // ignore sample fetch error
-        }
+      // Fetch multiple files in parallel for pattern analysis (up to 5 files)
+      const sampledFiles = await fetchMultipleFilesInParallel(owner, repo, defaultBranch, topLargest, process.env.GITHUB_TOKEN);
+
+      // Aggregate pattern matches across all sampled files
+      let totalAnyMatches = 0;
+      let totalSecretMatches = 0;
+      const sampledFilePaths: string[] = [];
+
+      for (const [path, { code }] of sampledFiles) {
+        const sanitized = stripCodeLiteralsAndComments(code);
+        const anyMatches = (sanitized.match(/\bas any\b/g) || []).length;
+        const isClientFile = code.includes('"use client"') || code.includes("'use client'");
+        const secretMatches = isClientFile
+          ? (sanitized.match(/(SERVICE_ROLE|STRIPE_SECRET|SECRET_KEY|PRIVATE_KEY)/gi) || []).length
+          : 0;
+
+        totalAnyMatches += anyMatches;
+        totalSecretMatches += secretMatches;
+        sampledFilePaths.push(path);
       }
 
       // Strip comments and string literals to prevent false positives!
+      const sampledCode = sampledFiles.get(topLargest[0]?.path)?.code || "";
       const sanitizedSampledCode = stripCodeLiteralsAndComments(sampledCode);
-
-      const anyMatches = (sanitizedSampledCode.match(/\bas any\b/g) || []).length;
-      const isClientFile = sampledCode.includes('"use client"') || sampledCode.includes("'use client'");
-      const secretMatches = isClientFile
-        ? (sanitizedSampledCode.match(/(SERVICE_ROLE|STRIPE_SECRET|SECRET_KEY|PRIVATE_KEY)/gi) || []).length
-        : 0;
+      const sampledFilePath = sampledFiles.get(topLargest[0]?.path)?.path || "";
 
       // God files criteria: files > 14 KB (~350+ lines)
       const trulyLargeFiles = topLargest.filter((f) => (f.size || 0) > 14000);
@@ -349,8 +431,8 @@ export async function POST(req: Request) {
       let baseScore = 20;
       if (!hasTests) baseScore += 22;
       if (trulyLargeFiles.length > 0) baseScore += trulyLargeFiles.length * 6;
-      if (anyMatches > 5) baseScore += 12;
-      if (secretMatches > 0) baseScore += 20;
+      if (totalAnyMatches > 5) baseScore += 12;
+      if (totalSecretMatches > 0) baseScore += 20;
       if (!hasLockFile && hasPackageJson) baseScore += 10;
       if (realSourceFiles.length > 60 && !hasTests) baseScore += 8;
 
@@ -364,34 +446,44 @@ export async function POST(req: Request) {
 
       const antipatterns: Antipattern[] = [];
 
-      if (secretMatches > 0 && sampledFilePath) {
-        antipatterns.push({
-          title: isRu ? "Утечка API ключей / Секретов в открытый бандл" : "Master Secrets in Client Bundle",
-          cwe: "CWE-798",
-          description: isRu
-            ? `В файле ${sampledFilePath} найдены сервисные переменные в клиентском коде ('use client'). Ключ доступен любому пользователю через DevTools.`
-            : `In file ${sampledFilePath}, private master credentials were found in client-side code ('use client'). Any browser can read this key.`,
-          severity: "CRITICAL",
-          detectedIn: sampledFilePath,
-          sampleBadCode: `process.env.SUPABASE_SERVICE_ROLE_KEY`,
-          sampleFix: `"use server";\nexport async function adminAction() { ... }`,
-        });
-      }
+      for (const filePath of sampledFilePaths) {
+        const code = sampledFiles.get(filePath)?.code || "";
+        const sanitized = stripCodeLiteralsAndComments(code);
+        const isClientFile = code.includes('"use client"') || code.includes("'use client'");
+        const anyMatches = (sanitized.match(/\bas any\b/g) || []).length;
+        const secretMatches = isClientFile
+          ? (sanitized.match(/(SERVICE_ROLE|STRIPE_SECRET|SECRET_KEY|PRIVATE_KEY)/gi) || []).length
+          : 0;
 
-      if (anyMatches > 0 && sampledFilePath) {
-        antipatterns.push({
-          title: isRu
-            ? `Глушение ошибок компилятора через 'as any' (${anyMatches} шт.)`
-            : `Compiler Type Suppression via 'as any' (${anyMatches} occurrences)`,
-          cwe: "CWE-704",
-          description: isRu
-            ? `ИИ часто прибегает к 'as any', когда не может вывести сложный тип. Это создает ложную иллюзию безопасности и скрывает реальные рантайм-краши.`
-            : `AI falls back to 'as any' when schema inference fails. This bypasses static checks and hides runtime exceptions.`,
-          severity: "HIGH",
-          detectedIn: sampledFilePath,
-          sampleBadCode: `const data = (await res.json()) as any;`,
-          sampleFix: `import { z } from "zod";\nconst schema = z.object({ id: z.string() });\nconst data = schema.parse(await res.json());`,
-        });
+        if (secretMatches > 0) {
+          antipatterns.push({
+            title: isRu ? "Утечка API ключей / Секретов в открытый бандл" : "Master Secrets in Client Bundle",
+            cwe: "CWE-798",
+            description: isRu
+              ? `В файле ${filePath} найдены сервисные переменные в клиентском коде ('use client'). Ключ доступен любому пользователю через DevTools.`
+              : `In file ${filePath}, private master credentials were found in client-side code ('use client'). Any browser can read this key.`,
+            severity: "CRITICAL",
+            detectedIn: filePath,
+            sampleBadCode: `process.env.SUPABASE_SERVICE_ROLE_KEY`,
+            sampleFix: `"use server";\nexport async function adminAction() { ... }`,
+          });
+        }
+
+        if (anyMatches > 0) {
+          antipatterns.push({
+            title: isRu
+              ? `Глушение ошибок компилятора через 'as any' (${anyMatches} шт.)`
+              : `Compiler Type Suppression via 'as any' (${anyMatches} occurrences)`,
+            cwe: "CWE-704",
+            description: isRu
+              ? `ИИ часто прибегает к 'as any', когда не может вывести сложный тип. Это создает ложную иллюзию безопасности и скрывает реальные рантайм-краши.`
+              : `AI falls back to 'as any' when schema inference fails. This bypasses static checks and hides runtime exceptions.`,
+            severity: "HIGH",
+            detectedIn: filePath,
+            sampleBadCode: `const data = (await res.json()) as any;`,
+            sampleFix: `import { z } from "zod";\nconst schema = z.object({ id: z.string() });\nconst data = schema.parse(await res.json());`,
+          });
+        }
       }
 
       if (!hasTests) {
@@ -486,7 +578,7 @@ export async function POST(req: Request) {
         estimatedFixCost,
         criticalBugsCount,
         spaghettiIndex,
-        ghostTypesCount: anyMatches,
+        ghostTypesCount: totalAnyMatches,
         filesScanned: realSourceFiles.length || treeItems.length,
         hasTests,
         starsCount: repoData.stargazers_count,
@@ -495,10 +587,10 @@ export async function POST(req: Request) {
         antipatterns,
         refactorSteps,
         diagnosticsSummary: isRu
-          ? `Просканировано ${realSourceFiles.length} файлов. Doomsday Score: ${doomsdayScore}%. ${
+          ? `Просканировано ${realSourceFiles.length} файлов (${sampledFilePaths.length} файлов深度 анализ). Doomsday Score: ${doomsdayScore}%. ${
               hasTests ? "Автотесты присутствуют." : "Обнаружен разрыв в тестировании (0 тестов)."
             }`
-          : `Scanned ${realSourceFiles.length} files. Doomsday Score: ${doomsdayScore}%. ${
+          : `Scanned ${realSourceFiles.length} files (${sampledFilePaths.length} deeply analyzed). Doomsday Score: ${doomsdayScore}%. ${
               hasTests ? "Tests present." : "Testing gap identified."
             }`,
       };
