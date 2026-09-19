@@ -389,7 +389,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function fetchWithRetry(
+export async function fetchWithRetry(
   url: string,
   options: RequestInit & { timeoutMs?: number; retryConfig?: Partial<RetryConfig> } = {},
   etagCache?: Map<string, string>

@@ -363,7 +363,6 @@ export async function POST(req: Request) {
         .sort((a, b) => (b.size || 0) - (a.size || 0));
 
       const topLargest = sortedSourceBySize.slice(0, 8);
-      const trulyLargeFiles = topLargest.filter((f) => (f.size || 0) > 14000);
 
       // Fetch multiple files in parallel for pattern analysis (up to 5 files)
       const sampledFiles = await fetchMultipleFilesInParallel(owner, repo, defaultBranch, topLargest, process.env.GITHUB_TOKEN);
