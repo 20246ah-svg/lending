@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { appendRecord, readRecords } from "@/lib/storage";
+import { appendRecord, readRecords, getStorageMode } from "@/lib/storage";
 
 interface StoredOrder {
   id: string;
@@ -105,6 +105,7 @@ export async function POST(req: NextRequest) {
 export async function GET() {
   const currentOrders = await getOrders();
   return NextResponse.json({
+    storageMode: getStorageMode(),
     totalOrders: currentOrders.length,
     orders: currentOrders.map((o) => ({
       id: o.id,

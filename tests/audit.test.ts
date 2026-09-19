@@ -12,6 +12,7 @@ import {
   LRUCache,
 } from "../lib/audit-core.ts";
 import { sanitizeProps, ALLOWED_EVENT_NAMES } from "../lib/analytics.ts";
+import { appendRecord, readRecords, getStorageMode } from "../lib/storage.ts";
 
 describe("parseGitHubUrl", () => {
   test("parses standard HTTPS GitHub repository URL", () => {
@@ -256,5 +257,44 @@ describe("Live App URL Scanner & SSRF Guard", () => {
     assert.equal(scripts.includes("https://my-saas.vercel.app/_next/static/chunks/main.js"), true);
     assert.equal(scripts.includes("https://cdn.example.com/app.js"), true);
     assert.equal(scripts.some((s) => s.startsWith("data:")), false);
+  });
+});
+
+describe("Storage Persistence Layer (Hybrid PostgreSQL & Disk Fallback)", () => {
+  test("reports correct storage mode when DATABASE_URL is not set", () => {
+    assert.equal(getStorageMode(), "local_disk");
+  });
+
+  test("persists and deduplicates waitlist records to local disk fallback", async () => {
+    const testEmail = `test_${Date.now()}@example.com`;
+    await appendRecord("waitlist", { email: testEmail, ip: "127.0.0.1", timestamp: Date.now() });
+
+    const records = await readRecords<{ email: string }>("waitlist");
+    assert.ok(records.some((r) => r.email === testEmail));
+
+    // Inserting again with same email updates rather than duplicating
+    const countBefore = records.filter((r) => r.email === testEmail).length;
+    await appendRecord("waitlist", { email: testEmail, ip: "127.0.0.2", timestamp: Date.now() });
+    const recordsAfter = await readRecords<{ email: string }>("waitlist");
+    const countAfter = recordsAfter.filter((r) => r.email === testEmail).length;
+    assert.equal(countBefore, 1);
+    assert.equal(countAfter, 1);
+  });
+
+  test("persists and retrieves order submissions on disk fallback", async () => {
+    const orderId = `test_ord_${Date.now()}`;
+    await appendRecord("orders", {
+      id: orderId,
+      tier: "concierge",
+      email: "founder@vibedebt.dev",
+      repo_url: "https://github.com/test/repo",
+      notes: "Urgent M&A audit",
+      lang: "en",
+    });
+
+    const orders = await readRecords<{ id: string; email: string }>("orders");
+    const found = orders.find((o) => o.id === orderId);
+    assert.ok(found);
+    assert.equal(found?.email, "founder@vibedebt.dev");
   });
 });

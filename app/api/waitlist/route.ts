@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { appendRecord, readRecords } from "@/lib/storage";
+import { appendRecord, readRecords, getStorageMode } from "@/lib/storage";
 
 interface WaitlistEntry {
   email: string;
@@ -50,6 +50,7 @@ export async function POST(req: Request) {
 export async function GET() {
   const list = await getWaitlist();
   return NextResponse.json({
+    storageMode: getStorageMode(),
     totalSubscribers: list.length,
     status: "active",
   });
