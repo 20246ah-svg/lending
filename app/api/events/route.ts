@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ALLOWED_EVENT_NAMES, sanitizeProps, SanitizedProps } from "@/lib/analytics";
+import { ALLOWED_EVENT_NAMES, sanitizeProps, type SanitizedProps } from "@/lib/analytics";
+import { logger } from "@/lib/logger";
+import { captureException } from "@/lib/error-tracker";
 
 interface StoredEvent {
   id: string;
@@ -12,9 +14,13 @@ interface StoredEvent {
 const BUFFER_CAPACITY = 1000;
 const eventBuffer: StoredEvent[] = [];
 let totalEventCount = 0;
-const eventCounts: Record<string, number> = {};
 
-// Rate limiter: 90 requests per minute per IP
+// Constrained event counts map initialized to allowed event names only
+const eventCounts: Record<string, number> = Object.fromEntries(
+  ALLOWED_EVENT_NAMES.map((name) => [name, 0])
+);
+
+// Memory-leak protected rate limiter: 90 requests per minute per IP
 interface RateLimitBucket {
   tokens: number;
   lastRefill: number;
@@ -25,6 +31,16 @@ const REFILL_WINDOW_MS = 60 * 1000;
 
 function checkRateLimit(ip: string): boolean {
   const now = Date.now();
+
+  // Prune expired buckets if map exceeds threshold
+  if (rateLimitMap.size > 2000) {
+    for (const [key, b] of rateLimitMap.entries()) {
+      if (now - b.lastRefill > REFILL_WINDOW_MS * 2) {
+        rateLimitMap.delete(key);
+      }
+    }
+  }
+
   const bucket = rateLimitMap.get(ip) || { tokens: MAX_TOKENS, lastRefill: now };
 
   const elapsed = now - bucket.lastRefill;
@@ -100,7 +116,9 @@ export async function POST(req: NextRequest) {
     eventCounts[name] = (eventCounts[name] || 0) + 1;
 
     return NextResponse.json({ success: true, id: eventId });
-  } catch {
+  } catch (err) {
+    logger.error("Malformed analytics event payload", { error: String(err) });
+    captureException(err, { route: "POST /api/events" });
     return NextResponse.json(
       { success: false, error: "Malformed event payload" },
       { status: 400 }
@@ -109,7 +127,6 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET() {
-  // Aggregate stats without leaking raw IPs or session identifiers
   const recent = eventBuffer.slice(-20).reverse();
 
   return NextResponse.json({

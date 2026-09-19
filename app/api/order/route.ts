@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { appendRecord, readRecords, getStorageMode } from "@/lib/storage";
+import { logger } from "@/lib/logger";
+import { captureException } from "@/lib/error-tracker";
 
 interface StoredOrder {
   id: string;
@@ -11,38 +13,70 @@ interface StoredOrder {
   createdAt: number;
 }
 
-// In-memory cache synced with disk persistence
+// In-memory cache synced with persistent storage (short TTL to keep multi-instance consistency)
 let ordersCache: StoredOrder[] | null = null;
+let cacheExpiresAt = 0;
+const CACHE_TTL_MS = 30000;
 
-async function getOrders(): Promise<StoredOrder[]> {
-  if (!ordersCache) {
+async function getOrders(forceFresh = false): Promise<StoredOrder[]> {
+  const now = Date.now();
+  if (!ordersCache || now > cacheExpiresAt || forceFresh) {
     ordersCache = await readRecords<StoredOrder>("orders");
+    cacheExpiresAt = now + CACHE_TTL_MS;
   }
   return ordersCache;
 }
 
-// Rate limiter: 10 order submissions per hour per IP
-const rateMap = new Map<string, { count: number; resetAt: number }>();
+function invalidateOrdersCache(): void {
+  ordersCache = null;
+  cacheExpiresAt = 0;
+}
 
-function checkOrderRate(ip: string): boolean {
+// Memory-leak protected rate limiter
+interface RateBucket {
+  count: number;
+  resetAt: number;
+}
+const postRateMap = new Map<string, RateBucket>();
+const getRateMap = new Map<string, RateBucket>();
+
+function checkRateLimit(map: Map<string, RateBucket>, ip: string, limit: number, windowMs: number): boolean {
   const now = Date.now();
-  const bucket = rateMap.get(ip) || { count: 0, resetAt: now + 3600000 };
+
+  // Periodic pruning to prevent unbounded memory growth
+  if (map.size > 2000) {
+    for (const [key, b] of map.entries()) {
+      if (now > b.resetAt) {
+        map.delete(key);
+      }
+    }
+  }
+
+  const bucket = map.get(ip) || { count: 0, resetAt: now + windowMs };
 
   if (now > bucket.resetAt) {
     bucket.count = 0;
-    bucket.resetAt = now + 3600000;
+    bucket.resetAt = now + windowMs;
   }
 
-  if (bucket.count >= 10) return false;
+  if (bucket.count >= limit) return false;
   bucket.count++;
-  rateMap.set(ip, bucket);
+  map.set(ip, bucket);
   return true;
+}
+
+function maskEmail(email: string): string {
+  const [name, domain] = email.split("@");
+  if (!domain) return "***";
+  const maskedName = name.length > 2 ? `${name[0]}***${name[name.length - 1]}` : `${name[0]}***`;
+  return `${maskedName}@${domain}`;
 }
 
 export async function POST(req: NextRequest) {
   try {
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "127.0.0.1";
-    if (!checkOrderRate(ip)) {
+    if (!checkRateLimit(postRateMap, ip, 10, 3600000)) {
+      logger.warn("Order submission rate limit exceeded", { ip });
       return NextResponse.json(
         { success: false, error: "Too many order requests. Please retry later." },
         { status: 429 }
@@ -79,9 +113,15 @@ export async function POST(req: NextRequest) {
       createdAt: Date.now(),
     };
 
+    // Await persistence and invalidate cache
     await appendRecord("orders", orderRecord);
-    const orders = await getOrders();
-    orders.push(orderRecord);
+    invalidateOrdersCache();
+
+    logger.info("New order submitted successfully", {
+      orderId,
+      tier: selectedTier,
+      lang: orderRecord.lang,
+    });
 
     const deliverySla = selectedTier === "concierge" ? "24 часа" : "48 часов";
 
@@ -94,7 +134,9 @@ export async function POST(req: NextRequest) {
           ? "Заказ на консьерж-аудит принят. Мы свяжемся с вами в течение 24 часов."
           : "Заявка на M&A Tech Due Diligence принята. Мы подготовим отчет в течение 48 часов.",
     });
-  } catch {
+  } catch (err) {
+    logger.error("Failed to process order request", { error: String(err) });
+    captureException(err, { route: "POST /api/order" });
     return NextResponse.json(
       { success: false, error: "Failed to process order request" },
       { status: 500 }
@@ -102,16 +144,49 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "127.0.0.1";
+  if (!checkRateLimit(getRateMap, ip, 60, 3600000)) {
+    return NextResponse.json(
+      { success: false, error: "Too many GET requests. Please retry later." },
+      { status: 429 }
+    );
+  }
+
+  const adminSecret = process.env.ADMIN_SECRET?.trim();
+  const authHeader = req.headers.get("authorization") || req.headers.get("x-admin-key");
+  const providedToken = authHeader?.startsWith("Bearer ")
+    ? authHeader.substring(7).trim()
+    : authHeader?.trim();
+
+  // If authorization was attempted but invalid
+  if (adminSecret && providedToken && providedToken !== adminSecret) {
+    logger.warn("Unauthorized order access attempt with invalid key", { ip });
+    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+  }
+
+  const isAdmin = Boolean(adminSecret && providedToken && providedToken === adminSecret);
   const currentOrders = await getOrders();
+
+  // Public callers receive aggregated metrics without sensitive emails or URLs
+  if (!isAdmin) {
+    return NextResponse.json({
+      storageMode: getStorageMode(),
+      totalOrders: currentOrders.length,
+      orders: currentOrders.map((o) => ({
+        id: o.id,
+        tier: o.tier,
+        email: maskEmail(o.email),
+        createdAt: o.createdAt,
+        lang: o.lang,
+      })),
+    });
+  }
+
+  // Authenticated admin receives complete records
   return NextResponse.json({
     storageMode: getStorageMode(),
     totalOrders: currentOrders.length,
-    orders: currentOrders.map((o) => ({
-      id: o.id,
-      tier: o.tier,
-      createdAt: o.createdAt,
-      lang: o.lang,
-    })),
+    orders: currentOrders,
   });
 }

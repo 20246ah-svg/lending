@@ -11,7 +11,7 @@
     "build": "next build",
     "start": "NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt next start",
     "lint": "eslint",
-    "test": "node --experimental-strip-types --test tests/audit.test.ts"
+    "test": "node --experimental-strip-types --import ./tests/register.mjs --test tests/audit.test.ts tests/api.test.ts"
   },
   "dependencies": {
     "next": "16.3.5",

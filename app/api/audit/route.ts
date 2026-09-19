@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import type { AuditReport, GodComponent, Antipattern, RefactorStep, AuditRequestBody } from "@/lib/types";
+import { logger } from "@/lib/logger";
+import { captureException } from "@/lib/error-tracker";
 import {
   parseGitHubUrl,
   isIgnoredFile,
@@ -26,11 +28,15 @@ const auditCache = new LRUCache<AuditReport>(250, 3600000);
 const rateLimiter = new SimpleRateLimiter();
 const githubETagCache = new Map<string, string>();
 
-function getBaseHeaders(token?: string): Record<string, string> {
+/**
+ * Strictly server-side headers. Never exposed or forwarded to client responses.
+ */
+function getServerGitHubHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     "User-Agent": "VibeDebt-Code-Auditor/1.0",
     Accept: "application/vnd.github.v3+json",
   };
+  const token = process.env.GITHUB_TOKEN?.trim();
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
@@ -39,15 +45,15 @@ function getBaseHeaders(token?: string): Record<string, string> {
 
 async function fetchGitHub<T = unknown>(
   path: string,
-  options: { token?: string; timeoutMs?: number } = {}
+  options: { timeoutMs?: number } = {}
 ): Promise<{ data: T; fromCache: boolean; rateLimit: ReturnType<typeof parseGitHubRateLimitHeaders> }> {
-  const { token, timeoutMs = 8000 } = options;
+  const { timeoutMs = 8000 } = options;
   const url = path.startsWith("http") ? path : `${GITHUB_API_BASE}${path}`;
 
   const result = await fetchWithRetry(
     url,
     {
-      headers: getBaseHeaders(token),
+      headers: getServerGitHubHeaders(),
       timeoutMs,
       retryConfig: { maxRetries: 3, baseDelayMs: 1000, maxDelayMs: 16000 },
     },
@@ -66,7 +72,7 @@ async function fetchGitHub<T = unknown>(
     throw error;
   }
 
-  const data = await result.response.json() as T;
+  const data = (await result.response.json()) as T;
   return { data, fromCache: result.fromCache, rateLimit };
 }
 
@@ -74,8 +80,7 @@ async function fetchMultipleFilesInParallel(
   owner: string,
   repo: string,
   branch: string,
-  files: Array<{ path: string; size?: number }>,
-  token?: string
+  files: Array<{ path: string; size?: number }>
 ): Promise<Map<string, { code: string; path: string }>> {
   const results = new Map<string, { code: string; path: string }>();
 
@@ -93,7 +98,7 @@ async function fetchMultipleFilesInParallel(
       try {
         const { data } = await fetchGitHub<{ content?: string }>(
           `/repos/${owner}/${repo}/contents/${file.path}?ref=${branch}`,
-          { token, timeoutMs: 10000 }
+          { timeoutMs: 10000 }
         );
 
         if (data?.content) {
@@ -119,10 +124,14 @@ async function fetchMultipleFilesInParallel(
 
 async function fetchWithTimeout(
   url: string,
-  headers: Record<string, string>,
+  headers?: Record<string, string>,
   timeoutMs = 10000
 ): Promise<Response> {
-  const result = await fetchWithRetry(url, { headers, timeoutMs }, githubETagCache);
+  const finalHeaders = {
+    ...getServerGitHubHeaders(),
+    ...(headers || {}),
+  };
+  const result = await fetchWithRetry(url, { headers: finalHeaders, timeoutMs }, githubETagCache);
   return result.response;
 }
 
@@ -229,19 +238,12 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: true, data: cached });
       }
 
-      const headers: Record<string, string> = {
-        "User-Agent": "VibeDebt-Code-Auditor",
-        Accept: "application/vnd.github.v3+json",
-      };
-      if (process.env.GITHUB_TOKEN) {
-        headers["Authorization"] = `Bearer ${process.env.GITHUB_TOKEN}`;
-      }
-
       // Fetch repo metadata
       let repoRes: Response;
       try {
-        repoRes = await fetchWithTimeout(`https://api.github.com/repos/${owner}/${repo}`, headers);
-      } catch {
+        repoRes = await fetchWithTimeout(`https://api.github.com/repos/${owner}/${repo}`);
+      } catch (err) {
+        logger.warn("GitHub API timeout contacting repo metadata", { owner, repo, error: String(err) });
         return NextResponse.json(
           {
             error: isRu
@@ -294,8 +296,7 @@ export async function POST(req: Request) {
       let treeItems: Array<{ path: string; size?: number; type: string }> = [];
       try {
         const treeRes = await fetchWithTimeout(
-          `https://api.github.com/repos/${owner}/${repo}/git/trees/${defaultBranch}?recursive=1`,
-          headers
+          `https://api.github.com/repos/${owner}/${repo}/git/trees/${defaultBranch}?recursive=1`
         );
         if (treeRes.ok) {
           interface TreeResponse {
@@ -304,7 +305,8 @@ export async function POST(req: Request) {
           const treeData: TreeResponse = await treeRes.json();
           treeItems = treeData.tree || [];
         }
-      } catch {
+      } catch (err) {
+        logger.warn("Failed to fetch repository tree", { owner, repo, error: String(err) });
         // Continue with empty tree if tree fetch fails
       }
 
@@ -324,8 +326,7 @@ export async function POST(req: Request) {
         hasPackageJson = true;
         try {
           const pkgRes = await fetchWithTimeout(
-            `https://api.github.com/repos/${owner}/${repo}/contents/${chosenPackageJsonPath}?ref=${defaultBranch}`,
-            headers
+            `https://api.github.com/repos/${owner}/${repo}/contents/${chosenPackageJsonPath}?ref=${defaultBranch}`
           );
           if (pkgRes.ok) {
             interface PkgContentResponse {
@@ -373,7 +374,7 @@ export async function POST(req: Request) {
       const topLargest = sortedSourceBySize.slice(0, 8);
 
       // Fetch multiple files in parallel for pattern analysis (up to 5 files)
-      const sampledFiles = await fetchMultipleFilesInParallel(owner, repo, defaultBranch, topLargest, process.env.GITHUB_TOKEN);
+      const sampledFiles = await fetchMultipleFilesInParallel(owner, repo, defaultBranch, topLargest);
 
       // Aggregate pattern matches across all sampled files
       let totalAnyMatches = 0;
@@ -608,7 +609,9 @@ export async function POST(req: Request) {
       { error: isRu ? "Необходимо передать url, snippet или archetype" : "Must provide url, snippet, or archetype" },
       { status: 400 }
     );
-  } catch {
+  } catch (err: unknown) {
+    logger.error("Audit engine internal error", { error: err instanceof Error ? err.message : String(err) });
+    captureException(err, { route: "POST /api/audit" });
     return NextResponse.json(
       { error: "Audit engine internal error. Please try again or paste code snippet." },
       { status: 500 }

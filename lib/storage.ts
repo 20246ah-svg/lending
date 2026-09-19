@@ -1,6 +1,8 @@
 import { Pool } from 'pg';
 import fs from 'node:fs';
 import path from 'node:path';
+import { logger } from './logger';
+import { captureException } from './error-tracker';
 
 const connectionString = process.env.DATABASE_URL;
 
@@ -23,7 +25,8 @@ function getPool(): Pool | null {
     });
 
     pool.on('error', (err) => {
-      console.error('[storage] Unexpected pool error:', err);
+      logger.error('Unexpected database pool error', { error: err.message });
+      captureException(err, { route: 'storage/pool' });
     });
   }
   return pool;
@@ -61,7 +64,7 @@ function ensureDataDir(): void {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
   } catch (err) {
-    console.error('[storage] Failed to create data directory:', err);
+    logger.error('Failed to create local data directory', { error: String(err) });
   }
 }
 
@@ -105,7 +108,7 @@ function writeLocalRecord<T extends object>(
     const filePath = getLocalFilePath(collection);
     fs.writeFileSync(filePath, JSON.stringify(existing, null, 2), 'utf-8');
   } catch (err) {
-    console.error(`[storage] Failed to write local fallback for ${collection}:`, err);
+    logger.error(`Failed to write local fallback for ${collection}`, { error: String(err) });
   }
 }
 
@@ -146,8 +149,10 @@ export async function ensureTables(): Promise<void> {
           CREATE INDEX IF NOT EXISTS idx_orders_email ON orders(email)
         `);
         tablesEnsured = true;
+        logger.info('Database schema and indexes verified successfully');
       } catch (err) {
-        console.error('[storage] Failed to ensure tables:', err);
+        logger.error('Failed to ensure database tables', { error: String(err) });
+        captureException(err, { route: 'storage/ensureTables' });
         initPromise = null;
       }
     })();
@@ -199,7 +204,8 @@ export async function appendRecord<T extends object>(
       );
     }
   } catch (err) {
-    console.error(`[storage] PostgreSQL write failed, falling back to disk for ${collection}:`, err);
+    logger.warn(`PostgreSQL write failed, falling back to disk for ${collection}`, { error: String(err) });
+    captureException(err, { route: `storage/appendRecord/${collection}` });
     writeLocalRecord(collection, record);
   }
 }
@@ -225,7 +231,8 @@ export async function readRecords<T>(collection: string): Promise<T[]> {
       return result.rows as T[];
     }
   } catch (err) {
-    console.error(`[storage] PostgreSQL read failed, falling back to disk for ${collection}:`, err);
+    logger.warn(`PostgreSQL read failed, falling back to disk for ${collection}`, { error: String(err) });
+    captureException(err, { route: `storage/readRecords/${collection}` });
     return readLocalRecords<T>(collection);
   }
 

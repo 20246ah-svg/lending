@@ -1,0 +1,41 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vibedebt-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      - DATABASE_URL=postgresql://vibedebt:vibedebt_secret@postgres:5432/vibedebt?sslmode=disable
+      # - GITHUB_TOKEN=your_optional_github_token_here
+      # - ADMIN_SECRET=your_admin_secret_here
+      # - SENTRY_DSN=your_optional_sentry_dsn_here
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: vibedebt-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vibedebt
+      POSTGRES_PASSWORD: vibedebt_secret
+      POSTGRES_DB: vibedebt
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vibedebt -d vibedebt"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
