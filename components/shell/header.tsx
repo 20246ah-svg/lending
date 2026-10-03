@@ -9,6 +9,8 @@ interface HeaderProps {
   lang: Lang;
   setLang: (l: Lang) => void;
   onAudit: () => void;
+  /** Prefix for in-page anchors, e.g. "/" when rendered on /calculator. */
+  anchorBase?: string;
 }
 
 /* Ordered to match the document flow so the section indices never disagree. */
@@ -20,11 +22,24 @@ const NAV = [
   { id: "pricing", ru: "Тарифы", en: "Pricing" },
 ];
 
+/* The debt calculator lives on its own route, so it gets its own slot in the
+   bar rather than being buried among the in-page anchors. */
+const TOOL_LINK = {
+  href: "/calculator",
+  ru: "Долговой калькулятор",
+  en: "Debt calculator",
+};
+
 /**
  * Chrome as instrument fascia: hazard strip, accession plate, indexed nav,
  * live UTC readout and an acid scroll-progress rail welded to the bottom edge.
  */
-export function Header({ lang, setLang, onAudit }: HeaderProps) {
+export function Header({
+  lang,
+  setLang,
+  onAudit,
+  anchorBase = "",
+}: HeaderProps) {
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
   const railRef = useRef<HTMLSpanElement>(null);
@@ -69,7 +84,10 @@ export function Header({ lang, setLang, onAudit }: HeaderProps) {
       >
         <div className="shell flex items-center justify-between gap-4 h-[62px]">
           {/* accession plate */}
-          <a href="#top" className="flex items-center gap-3 group shrink-0">
+          <a
+            href={`${anchorBase}#top`}
+            className="flex items-center gap-3 group shrink-0"
+          >
             <span className="relative grid place-items-center w-9 h-9 border border-[var(--line-3)] overflow-hidden">
               <span
                 aria-hidden="true"
@@ -98,7 +116,7 @@ export function Header({ lang, setLang, onAudit }: HeaderProps) {
             {NAV.map((item, i) => (
               <a
                 key={item.id}
-                href={`#${item.id}`}
+                href={`${anchorBase}#${item.id}`}
                 className="group px-3 py-2 mono text-[10.5px] tracking-[0.16em] uppercase text-[var(--bone-dim)] hover:text-[var(--acid)] transition-colors flex items-center gap-2"
               >
                 <span className="text-[8.5px] text-[var(--line-3)] group-hover:text-[var(--acid)] transition-colors tabular-nums">
@@ -110,6 +128,15 @@ export function Header({ lang, setLang, onAudit }: HeaderProps) {
           </nav>
 
           <div className="flex items-center gap-2 sm:gap-3">
+            <a
+              href={TOOL_LINK.href}
+              className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1.5 mono text-[10px] tracking-[0.14em] uppercase border transition-colors hover:bg-[var(--acid)] hover:text-[#05060a]"
+              style={{ borderColor: "var(--line-2)", color: "var(--acid)" }}
+            >
+              {lang === "ru" ? TOOL_LINK.ru : TOOL_LINK.en}
+              <span aria-hidden="true">↗</span>
+            </a>
+
             <LabClock className="hidden xl:block" />
 
             {/* language fader */}
@@ -167,7 +194,11 @@ export function Header({ lang, setLang, onAudit }: HeaderProps) {
           ref={railRef}
           aria-hidden="true"
           className="absolute bottom-0 left-0 right-0 h-[2px] origin-left"
-          style={{ background: "var(--acid)", transform: "scaleX(0)", boxShadow: "0 0 10px rgba(200,255,60,.55)" }}
+          style={{
+            background: "var(--acid)",
+            transform: "scaleX(0)",
+            boxShadow: "0 0 10px rgba(200,255,60,.55)",
+          }}
         />
       </header>
 
@@ -185,11 +216,11 @@ export function Header({ lang, setLang, onAudit }: HeaderProps) {
               ЗАКРЫТЬ ✕
             </button>
           </div>
-          <nav className="shell flex-1 flex flex-col justify-center gap-1">
+          <nav className="shell flex-1 flex flex-col justify-center gap-1 overflow-y-auto py-6">
             {NAV.map((item, i) => (
               <a
                 key={item.id}
-                href={`#${item.id}`}
+                href={`${anchorBase}#${item.id}`}
                 onClick={() => setOpen(false)}
                 className="d3 py-4 border-b border-[var(--line)] flex items-baseline justify-between gap-4 text-[var(--bone)]"
               >
@@ -197,6 +228,16 @@ export function Header({ lang, setLang, onAudit }: HeaderProps) {
                 <span className="mono text-[10px] text-[var(--acid)]">0{i + 1}</span>
               </a>
             ))}
+
+            <a
+              href={TOOL_LINK.href}
+              onClick={() => setOpen(false)}
+              className="d3 py-4 border-b border-[var(--line)] flex items-baseline justify-between gap-4 text-[var(--acid)]"
+            >
+              <span>{lang === "ru" ? TOOL_LINK.ru : TOOL_LINK.en}</span>
+              <span className="mono text-[10px]">↗</span>
+            </a>
+
             <button
               type="button"
               onClick={() => {
@@ -208,6 +249,7 @@ export function Header({ lang, setLang, onAudit }: HeaderProps) {
               <ZapIcon size={13} />
               {lang === "ru" ? "Запустить аудит" : "Run audit"}
             </button>
+
             <a
               href="https://github.com/20246ah-svg/lending"
               target="_blank"

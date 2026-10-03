@@ -580,17 +580,23 @@ export function Simulator({ store }: { store: AuditStore }) {
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={() => {
-                  const el = document.getElementById("audit-tool");
-                  el?.scrollIntoView({ behavior: "smooth" });
-                }}
-                className="btn w-full mt-5"
-              >
-                <ZapIcon size={12} />
-                {ru ? "Собрать план ремонта" : "Assemble the repair plan"}
-              </button>
+              <div className="mt-5 flex flex-col gap-2.5">
+                <a href="/calculator" className="btn btn-acid w-full" data-cursor="OPEN">
+                  {ru ? "Открыть долговой калькулятор" : "Open the debt calculator"}
+                  <span aria-hidden="true">↗</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const el = document.getElementById("audit-tool");
+                    el?.scrollIntoView({ behavior: "smooth" });
+                  }}
+                  className="btn w-full"
+                >
+                  <ZapIcon size={12} />
+                  {ru ? "Собрать план ремонта" : "Assemble the repair plan"}
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -10,6 +10,7 @@ const COLUMNS = [
     links: [
       { ru: "Аудитор", en: "Auditor", href: "#audit-tool" },
       { ru: "Реактор долга", en: "Debt reactor", href: "#calculator" },
+      { ru: "Долговой калькулятор", en: "Debt calculator", href: "/calculator" },
       { ru: "Локальный CLI", en: "Local CLI", href: "#cli-section" },
       { ru: "Уровни доступа", en: "Access levels", href: "#pricing" },
     ],
@@ -32,8 +33,17 @@ const COLUMNS = [
   },
 ];
 
-export function Footer({ lang }: { lang: Lang }) {
+export function Footer({
+  lang,
+  anchorBase = "",
+}: {
+  lang: Lang;
+  /** Prefix for in-page anchors, e.g. "/" when rendered on /calculator. */
+  anchorBase?: string;
+}) {
   const ru = lang === "ru";
+  const resolve = (href: string) =>
+    href.startsWith("#") ? `${anchorBase}${href}` : href;
 
   return (
     <footer className="relative z-10 mt-auto overflow-hidden border-t border-[var(--line-2)] bg-[#020306]">
@@ -98,7 +108,7 @@ export function Footer({ lang }: { lang: Lang }) {
                   {col.links.map((l) => (
                     <li key={l.ru}>
                       <a
-                        href={l.href}
+                        href={resolve(l.href)}
                         className="mono text-[10.5px] text-[var(--bone-dim)] hover:text-[var(--acid)] transition"
                       >
                         {ru ? l.ru : l.en}
@@ -139,7 +149,7 @@ export function Footer({ lang }: { lang: Lang }) {
             {ru ? "Сделано для инди-хакеров" : "Built for indie hackers"}
           </span>
           <a
-            href="#top"
+            href={`${anchorBase}#top`}
             className="mono text-[10px] tracking-[0.18em] text-[var(--bone-dim)] hover:text-[var(--acid)] transition"
           >
             {ru ? "НАВЕРХ ↑" : "BACK TO TOP ↑"}
